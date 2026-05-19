@@ -52,29 +52,22 @@ killarr:
 # Shared instance definitions
 # ---------------------------------------------------------------------------
 instances:
-  sonarr-anime:
+  sonarr-instance:
     type: sonarr
-    host: "http://sonarr-anime:8989"
-    api_key: "${SONARR_ANIME_API_KEY}"
+    host: "http://<sonarr-host>:<port>"
+    api_key: "${SONARR_API_KEY}"
     enabled: true
     search_type: series             # Per-series SeriesSearch (not per episode)
 
-  sonarr-tv:
-    type: sonarr
-    host: "http://sonarr-tv:8989"
-    api_key: "${SONARR_TV_API_KEY}"
-    enabled: true
-    search_type: series
-
-  radarr:
+  radarr-instance:
     type: radarr
-    host: "http://radarr:7878"
+    host: "http://<radarr-host>:<port>"
     api_key: "${RADARR_API_KEY}"
     enabled: true
 
-  lidarr:
+  lidarr-instance:
     type: lidarr
-    host: "http://lidarr:8686"
+    host: "http://<lidarr-host>:<port>"
     api_key: "${LIDARR_API_KEY}"
     enabled: true
     search_type: artist             # Per-artist ArtistSearch (not per album)

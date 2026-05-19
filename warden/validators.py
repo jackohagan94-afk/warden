@@ -40,6 +40,8 @@ _CATEGORY_MAP: dict[str, list[str]] = {
         "non-sample file detected",
         "not enough space",
         "sample file detected",
+        "sample",
+        "unable to parse file",
         "found matching movie via grab history",
         "release was matched to movie by id",
         "matched to movie by id",
