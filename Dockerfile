@@ -1,5 +1,15 @@
 FROM python:3.13-slim
 
+ARG VERSION=dev
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Warden"
+LABEL org.opencontainers.image.description="Automated media library management for *Arr ecosystems"
+LABEL org.opencontainers.image.source="https://github.com/johagan/warden"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.licenses="MIT"
+
 RUN groupadd -r nonroot -g 65532 && useradd -r -g nonroot -u 65532 -d /app nonroot
 
 WORKDIR /app

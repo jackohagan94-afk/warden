@@ -1,17 +1,15 @@
 services:
   warden:
-    image: warden:latest
+    image: ghcr.io/johagan/warden:latest
     container_name: warden
     hostname: warden
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       TZ: Australia/Brisbane
       LOG_LEVEL: INFO
-      WARDEN_MODE: both
-      SONARR_TV_API_KEY: ${SONARR_TV_API_KEY}
-      SONARR_ANIME_API_KEY: ${SONARR_ANIME_API_KEY}
-      RADARR_API_KEY: ${RADARR_API_KEY}
-      LIDARR_API_KEY: ${LIDARR_API_KEY}
+      WARDEN_MODE: warden
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     networks:

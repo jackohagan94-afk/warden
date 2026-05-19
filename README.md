@@ -1,6 +1,11 @@
 # Warden
 
-Unified all-in-one service combining [Warden](https://github.com/JudoChinX/warden) (automated media searches) and [Killarr](https://github.com/JudoChinX/killarr) (stalled download cleanup) into a single Docker container.
+Automated media library management for *Arr ecosystems. Warden operates in two complementary modes:
+
+- **Vigilance** — hunts for missing and upgrade-eligible media across your library
+- **Defence** — clears stalled, broken, and problematic downloads from your queue
+
+Run either mode independently, or combine both for full library automation.
 
 ## Quick Start
 
@@ -10,9 +15,11 @@ docker compose up -d
 
 ## Modes
 
-- `WARDEN_MODE=both` — Run both search and cleanup (default)
-- `WARDEN_MODE=search` — Run only search (Warden)
-- `WARDEN_MODE=cleanup` — Run only cleanup (Killarr)
+| Mode | Env Value | Description |
+|------|-----------|-------------|
+| Warden | `WARDEN_MODE=warden` | Run both Vigilance and Defence (default) |
+| Vigilance | `WARDEN_MODE=vigilance` | Search only — find and trigger missing/upgrades |
+| Defence | `WARDEN_MODE=defence` | Cleanup only — remove stalled and broken downloads |
 
 ## Configuration
 
@@ -24,10 +31,10 @@ Define your *Arr instances under `instances:`. Each instance shares the same con
 
 ```yaml
 instances:
-  sonarr-tv:
+  sonarr-instance:
     type: sonarr
-    host: "http://sonarr-tv:8989"
-    api_key: "${SONARR_TV_API_KEY}"
+    host: "http://<sonarr-host>:<port>"
+    api_key: "${SONARR_API_KEY}"
     enabled: true
 ```
 
@@ -45,10 +52,10 @@ Control the granularity of search commands per instance:
 
 ```yaml
 instances:
-  sonarr-tv:
+  sonarr-instance:
     type: sonarr
     search_type: series        # Search entire series instead of individual episodes
-  lidarr:
+  lidarr-instance:
     type: lidarr
     search_type: artist        # Search entire artist instead of individual albums
 ```
@@ -68,99 +75,132 @@ global:
 - `detect` — Group movies by collection when found in wanted endpoints
 - `force` — Fetch from `/api/v3/collection` and search all monitored collections with missing movies
 
-### Cleanup Caps
+### Vigilance — Search Scheduling
 
-Limit how many items each instance can remove per cleanup cycle:
+Configure how Warden hunts for missing and upgrade media:
 
 ```yaml
-killarr:
-  max_removals_per_instance: 25   # Global default; 0 = no cap
-
-instances:
-  lidarr:
-    type: lidarr
-    max_removals_per_instance: 5   # Override for this instance only
+global:
+  run_interval_minutes: 30          # How often to check for new items
+  missing_batch_size: 25            # Items searched per cycle (0 = disabled, -1 = unlimited)
+  upgrade_batch_size: 0             # Upgrade searches per cycle (0 = disabled)
+  search_order: release_date_ascending
+  stagger_interval_seconds: 10      # Delay between individual search commands
+  retry_interval_days: 5            # Skip items searched within this window
+  retry_interval_days_missing: 3    # Override for missing items only
+  retry_interval_days_upgrade: 7    # Override for upgrade items only
+  fetch_page_size: 2000             # Records per API request
+  fetch_timeout_seconds: 120        # HTTP request timeout
+  max_queue_size: 500               # Pause if queue >= this (0 = disabled)
+  circuit_breaker_threshold: 3      # Skip instance after N consecutive failures
+  interleave_instances: false       # Alternate between instances in search queue
+  interleave_types: true            # Alternate between missing and upgrade searches
+  search_after_cleanup: true        # Search for replacements after Defence removals
+  search_after_cleanup_actions: [retry, blocklist]
+  api_request_interval_seconds: 2   # Min delay between mutating API calls
+  search_jitter_seconds: 3          # Random extra delay to avoid burst patterns
 ```
 
-### Season Packs (Sonarr)
+#### Season Packs (Sonarr)
 
 Control when to search for entire seasons instead of individual episodes:
 
 ```yaml
 instances:
-  sonarr-tv:
+  sonarr-instance:
     type: sonarr
     season_packs: true              # Always use season search
     # season_packs: 0.75           # Or: threshold ratio (75% of episodes missing)
     # season_packs: 5              # Or: minimum episode count
 ```
 
-### Protect Downloading Series (Sonarr)
+### Defence — Queue Cleanup
 
-Prevent cleanup from disrupting series with active downloads:
-
-```yaml
-instances:
-  sonarr-tv:
-    type: sonarr
-    protect_downloading_series: true
-```
-
-### Cleanup Search Scope
-
-Control what ID is used when triggering replacement searches after cleanup:
+Configure how Warden defends your library from problematic downloads:
 
 ```yaml
-instances:
-  sonarr-tv:
-    type: sonarr
-    cleanup_search_scope: series   # episode | season | series
+killarr:
+  interval: 600                     # Run every 10 minutes
+  batch_size: -1                    # Process all stalled items (-1 = unlimited, 0 = disabled)
+  stagger_interval_seconds: 5       # Delay between removals
+  circuit_breaker_threshold: 3      # Skip after N consecutive failures
+  cleanup_page_size: 100            # Queue records per API request
+  max_cleanup_queue_records: 0      # Cap total records fetched (0 = unlimited)
+  max_removals_per_instance: 25     # Per-instance removal cap per cycle (0 = no cap)
+  delete_timeout_seconds: 15        # Timeout for queue deletion calls
+  retry_interval_minutes: 0         # Cooldown before re-evaluating removed items (0 = off)
+  removal_order: api_order          # api_order | age_ascending | age_descending
+  cleanup_search_scope: episode     # episode | season | series (what ID to search after removal)
+  protect_downloading_series: false # Hold back stalled items from series with active downloads
+
+  # Action per stall reason: ignore | remove | retry | blocklist
+  dangerous_file: blocklist
+  manual_import: blocklist
+  no_files: blocklist
+  no_upgrade: blocklist
+  stalled: blocklist
+  missing_items: blocklist
+  tba_title: blocklist
+  no_messages: blocklist
+  unknown: blocklist
 ```
 
-- `episode` — Uses episode ID (default)
-- `season` — Uses `season:seriesId:seasonNumber` format
-- `series` — Uses `series:seriesId` format
+#### Stall Categories
 
-When `search_type: series` is enabled, cleanup automatically uses series ID regardless of scope.
+| Category | Triggered By |
+|----------|-------------|
+| `dangerous_file` | Potentially dangerous file extension detected |
+| `manual_import` | Import failures, sample conflicts, matching issues |
+| `no_files` | No eligible video/audio files found |
+| `no_upgrade` | Existing file already meets cutoff or is better |
+| `stalled` | Download stuck (metadata, no peers, locked files) |
+| `missing_items` | Files not found in grabbed release |
+| `tba_title` | Title still "TBA" (unreleased) |
+| `no_messages` | No status messages provided by *Arr |
+| `unknown` | Unrecognized messages (please report) |
 
-### Retry Intervals
+### Shared Settings
+
+#### Active Hours
+
+Restrict both modes to specific hours (UTC):
 
 ```yaml
 global:
-  retry_interval_days: 5            # Default for both missing and upgrade
-  retry_interval_days_missing: 3    # Override for missing items only
-  retry_interval_days_upgrade: 7    # Override for upgrade items only
+  active_hours: "22:00-06:00"     # Only run between 10 PM and 6 AM UTC
 ```
 
-### Circuit Breaker
+Leave empty or omit for all hours (default).
+
+#### Circuit Breaker
 
 Skip instances after consecutive failures:
 
 ```yaml
 global:
-  circuit_breaker_threshold: 3      # Fetch failures
+  circuit_breaker_threshold: 3      # Vigilance fetch failures
 killarr:
-  circuit_breaker_threshold: 3      # Cleanup failures
+  circuit_breaker_threshold: 3      # Defence cleanup failures
 ```
 
-### Active Hours
+#### Per-Instance Overrides
 
-Restrict operations to specific hours (UTC):
+Any global or killarr setting can be overridden per instance:
 
 ```yaml
-global:
-  active_hours_start: 1             # 1 AM UTC
-  active_hours_end: 6               # 6 AM UTC
+instances:
+  lidarr-instance:
+    type: lidarr
+    max_removals_per_instance: 5     # Override Defence cap for this instance only
+    search_type: artist
 ```
-
-Set to `0` and `0` for all hours (default).
 
 ## Docker Compose
 
 ```yaml
 services:
   warden:
-    image: warden:latest
+    image: johagan/warden:latest
     container_name: warden
     restart: unless-stopped
     env_file:
@@ -168,12 +208,14 @@ services:
     environment:
       TZ: Australia/Brisbane
       LOG_LEVEL: INFO
-      WARDEN_MODE: both
+      WARDEN_MODE: warden
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     networks:
       - homelab
 ```
+
+**Registry:** Images are published to GitHub Container Registry (`ghcr.io/johagan/warden`) and mirrored to Docker Hub (`johagan/warden`). For private deployments, use your own registry URL.
 
 ## Building
 
