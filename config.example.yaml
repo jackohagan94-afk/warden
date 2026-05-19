@@ -1,0 +1,81 @@
+# Warden — Unified Configuration
+# Supports both search (Warden) and cleanup (Killarr) modes.
+# WARDEN_MODE=both runs both; =search or =cleanup runs one only.
+
+# ---------------------------------------------------------------------------
+# Warden — automated search scheduling
+# ---------------------------------------------------------------------------
+global:
+  dry_run: false
+  run_interval_minutes: 30          # Run missing/upgrade cycles every 30 minutes
+  stagger_interval_seconds: 10      # Wait 10s between individual searches
+  retry_interval_days: 5            # Skip items searched within last 5 days
+  missing_batch_size: 25            # Up to 25 missing items per cycle
+  upgrade_batch_size: 0             # Upgrades disabled (enable with positive number)
+  search_order: release_date_ascending
+  fetch_page_size: 2000             # Records per API request
+  fetch_timeout_seconds: 120        # HTTP request timeout
+  circuit_breaker_threshold: 3      # Skip instance after 3 consecutive fetch failures
+  max_queue_size: 500               # Pause searches if queue >= 500 items (0 = disabled)
+  api_request_interval_seconds: 2   # Minimum delay between mutating API calls per instance
+  search_jitter_seconds: 3          # Random extra delay before search commands to avoid bursts
+  search_after_cleanup: true        # Search replacement after retry/blocklist cleanup
+  search_after_cleanup_actions: [retry, blocklist]
+  radarr_collection_search_mode: "off" # off | detect | force (force is experimental)
+
+# ---------------------------------------------------------------------------
+# Killarr — stalled download cleanup
+# ---------------------------------------------------------------------------
+killarr:
+  interval: 600                     # Run every 10 minutes
+  stagger_interval_seconds: 5
+  dry_run: false
+  batch_size: -1                    # Process all stalled items each cycle
+  circuit_breaker_threshold: 3      # Skip cleanup after 3 consecutive failures
+  cleanup_page_size: 100            # Queue records per API request during cleanup
+  max_cleanup_queue_records: 0      # 0 = unlimited, positive = cap total records fetched
+  max_removals_per_instance: 25     # Per-instance cleanup cap each cycle; 0 = no cap
+  delete_timeout_seconds: 15        # Timeout for queue deletion calls
+
+  # Action per stall reason: ignore | remove | retry | blocklist
+  dangerous_file: blocklist
+  manual_import: blocklist
+  no_files: blocklist
+  no_upgrade: blocklist
+  stalled: blocklist
+  missing_items: blocklist
+  tba_title: blocklist
+  no_messages: blocklist
+  unknown: blocklist
+
+# ---------------------------------------------------------------------------
+# Shared instance definitions
+# ---------------------------------------------------------------------------
+instances:
+  sonarr-anime:
+    type: sonarr
+    host: "http://sonarr-anime:8989"
+    api_key: "${SONARR_ANIME_API_KEY}"
+    enabled: true
+    search_type: series             # Per-series SeriesSearch (not per episode)
+
+  sonarr-tv:
+    type: sonarr
+    host: "http://sonarr-tv:8989"
+    api_key: "${SONARR_TV_API_KEY}"
+    enabled: true
+    search_type: series
+
+  radarr:
+    type: radarr
+    host: "http://radarr:7878"
+    api_key: "${RADARR_API_KEY}"
+    enabled: true
+
+  lidarr:
+    type: lidarr
+    host: "http://lidarr:8686"
+    api_key: "${LIDARR_API_KEY}"
+    enabled: true
+    search_type: artist             # Per-artist ArtistSearch (not per album)
+    max_removals_per_instance: 5     # Override cleanup cap for this instance

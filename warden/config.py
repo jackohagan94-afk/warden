@@ -1,0 +1,271 @@
+"""Unified configuration loader and validator for Warden."""
+
+import datetime
+import logging
+import os
+import re
+from typing import Any
+
+import yaml
+
+from warden.validators import (
+    STALL_CATEGORIES,
+    VALID_ACTIONS,
+    VALID_ARR_TYPES,
+    VALID_REMOVAL_ORDERS,
+    VALID_SEARCH_ORDERS,
+    VALID_SEARCH_TYPES,
+    _parse_hhmm,
+    _validate_active_hours,
+    _validate_season_packs,
+    _validate_setting,
+)
+
+logger = logging.getLogger(__name__)
+
+REQUIRED_TOP_LEVEL = ("instances",)
+
+SEARCH_SETTINGS_SCHEMA = {
+    "active_hours": {"default": "", "type": str, "validator": _validate_active_hours},
+    "api_request_interval_seconds": {"default": 0, "type": int, "min_value": 0},
+    "circuit_breaker_threshold": {"default": 0, "type": int, "min_value": 0},
+    "dry_run": {"default": False, "type": bool},
+    "exclude_tags": {"default": [], "type": list, "element_type": str},
+    "fetch_page_size": {"default": 2000, "type": int, "min_value": 1},
+    "fetch_timeout_seconds": {"default": 120, "type": int, "min_value": 5},
+    "include_tags": {"default": [], "type": list, "element_type": str},
+    "interleave_instances": {"default": False, "type": bool},
+    "interleave_types": {"default": True, "type": bool},
+    "max_queue_size": {"default": 0, "type": int, "min_value": 0},
+    "missing_batch_size": {"default": 20, "type": int, "allow_special_values": True},
+    "radarr_collection_search_mode": {"default": "off", "type": str, "choices": ("off", "detect", "force")},
+    "retry_interval_days": {"default": 30, "type": int},
+    "retry_interval_days_missing": {"default": None, "type": int},
+    "retry_interval_days_upgrade": {"default": None, "type": int},
+    "run_interval_minutes": {"default": 60, "type": int},
+    "run_interval_minutes_missing": {"default": None, "type": int},
+    "run_interval_minutes_upgrade": {"default": None, "type": int},
+    "search_after_cleanup": {"default": True, "type": bool},
+    "search_after_cleanup_actions": {"default": ["retry", "blocklist"], "type": list, "element_type": str},
+    "search_order": {"default": "last_searched_ascending", "type": str, "choices": VALID_SEARCH_ORDERS},
+    "search_jitter_seconds": {"default": 0, "type": int, "min_value": 0},
+    "search_type": {"default": None, "type": str, "choices": VALID_SEARCH_TYPES},
+    "season_packs": {"default": False, "custom_validator": _validate_season_packs},
+    "stagger_interval_seconds": {"default": 30, "type": int, "min_value": 1},
+    "upgrade_batch_size": {"default": 10, "type": int, "allow_special_values": True},
+}
+
+CLEANUP_SETTINGS_SCHEMA = {
+    "active_hours": {"default": "", "type": str, "validator": _validate_active_hours},
+    "batch_size": {"default": 10, "type": int, "allow_special_values": True},
+    "circuit_breaker_threshold": {"default": 0, "type": int, "min_value": 0},
+    "cleanup_page_size": {"default": 100, "type": int, "min_value": 1},
+    "delete_timeout_seconds": {"default": 15, "type": int, "min_value": 5},
+    "dry_run": {"default": False, "type": bool},
+    "exclude_tags": {"default": [], "type": list, "element_type": str},
+    "fetch_timeout_seconds": {"default": 30, "type": int, "min_value": 5},
+    "include_tags": {"default": [], "type": list, "element_type": str},
+    "interleave_instances": {"default": False, "type": bool},
+    "interval": {"default": 3600, "type": int, "min_value": 1},
+    "max_cleanup_queue_records": {"default": 0, "type": int, "min_value": 0},
+    "max_removals_per_instance": {"default": 0, "type": int, "min_value": 0},
+    "cleanup_search_scope": {"default": "episode", "type": str, "choices": ("episode", "season", "series")},
+    "protect_downloading_series": {"default": False, "type": bool},
+    "removal_order": {"default": "api_order", "type": str, "choices": VALID_REMOVAL_ORDERS},
+    "retry_interval_minutes": {"default": 0, "type": int, "min_value": 0},
+    "search_after_cleanup": {"default": None, "type": bool},
+    "stagger_interval_seconds": {"default": 5, "type": int, "min_value": 0},
+}
+
+
+def _apply_interval_conversions(settings: dict) -> None:
+    if "interval" in settings and "run_interval_minutes" not in settings:
+        if not isinstance(settings["interval"], int):
+            raise ValueError("'global.interval' must be an integer.")
+        settings["run_interval_minutes"] = settings["interval"] // 60
+    if "interval_missing" in settings:
+        if not isinstance(settings["interval_missing"], int):
+            raise ValueError("'global.interval_missing' must be an integer.")
+        if settings["interval_missing"] < 60:
+            raise ValueError("'global.interval_missing' must be at least 60 seconds.")
+        settings["run_interval_minutes_missing"] = settings["interval_missing"] // 60
+    if "interval_upgrade" in settings:
+        if not isinstance(settings["interval_upgrade"], int):
+            raise ValueError("'global.interval_upgrade' must be an integer.")
+        if settings["interval_upgrade"] < 60:
+            raise ValueError("'global.interval_upgrade' must be at least 60 seconds.")
+        settings["run_interval_minutes_upgrade"] = settings["interval_upgrade"] // 60
+
+
+def _expand_env_var(match: re.Match) -> str:
+    name = match.group(1)
+    val = os.environ.get(name)
+    if val is None:
+        raise ValueError(f"Environment variable '{name}' referenced in config is not set.")
+    return val
+
+
+def _expand_env_vars(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {key: _expand_env_vars(val) for key, val in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_env_vars(item) for item in obj]
+    if isinstance(obj, str):
+        expanded = re.sub(r"\$\{([^}]+)\}", _expand_env_var, obj)
+        return _parse_env_value(expanded) if expanded != obj else expanded
+    return obj
+
+
+def _parse_env_value(value: str) -> Any:
+    val_lower = value.lower()
+    if val_lower == "true":
+        return True
+    if val_lower == "false":
+        return False
+    if re.match(r"^-?\d+$", value):
+        return int(value)
+    if re.match(r"^-?\d+\.\d+$", value):
+        return float(value)
+    return value
+
+
+def _parse_instance(name: str, config: dict) -> tuple[str, dict] | None:
+    instance = config.copy()
+    if "host" in instance:
+        instance["url"] = instance.pop("host")
+    inst_type = str(instance.pop("type", None) or "").lower()
+    if not inst_type:
+        raise ValueError(f"Missing 'type' field for instance '{name}'. Must be one of: {', '.join(VALID_ARR_TYPES)}.")
+    if inst_type not in VALID_ARR_TYPES:
+        raise ValueError(f"Invalid type '{inst_type}' for instance '{name}'. Must be one of: {', '.join(VALID_ARR_TYPES)}.")
+    instance["name"] = name
+    for field in ("url", "api_key"):
+        if not instance.get(field):
+            raise ValueError(f"Missing or empty '{field}' for instance '{name}'.")
+    instance.setdefault("weight", 1)
+    if not isinstance(instance["weight"], (int, float)) or instance["weight"] <= 0:
+        raise ValueError(f"'weight' for instance '{name}' must be a positive number.")
+
+    search_type = instance.get("search_type", "").lower()
+    if search_type and search_type not in VALID_SEARCH_TYPES:
+        raise ValueError(f"Invalid search_type '{search_type}' for instance '{name}'.")
+
+    if not instance.get("enabled", False):
+        return None
+    return (inst_type, instance)
+
+
+def _validate_search_settings(settings: dict, schema: dict) -> None:
+    for setting, definition in schema.items():
+        default = definition["default"]
+        settings.setdefault(setting, list(default) if isinstance(default, list) else default)
+        if definition["default"] is None and settings[setting] is None:
+            continue
+        if "custom_validator" in definition:
+            definition["custom_validator"](setting, settings[setting])
+            continue
+        _validate_setting(
+            setting,
+            settings[setting],
+            definition["type"],
+            definition.get("choices"),
+            allow_special_values=definition.get("allow_special_values", False),
+            min_value=definition.get("min_value"),
+            element_type=definition.get("element_type"),
+            validator=definition.get("validator"),
+            prefix="global",
+        )
+
+
+def _validate_cleanup_settings(settings: dict, schema: dict) -> None:
+    for setting, definition in schema.items():
+        default = definition["default"]
+        settings.setdefault(setting, list(default) if isinstance(default, list) else default)
+        if definition["default"] is None and settings[setting] is None:
+            continue
+        _validate_setting(
+            setting,
+            settings[setting],
+            definition["type"],
+            definition.get("choices"),
+            allow_special_values=definition.get("allow_special_values", False),
+            min_value=definition.get("min_value"),
+            element_type=definition.get("element_type"),
+            prefix="killarr",
+        )
+        validator = definition.get("validator")
+        if validator is not None:
+            validator(settings[setting])
+
+
+def _validate_stall_actions(settings: dict) -> None:
+    for category in STALL_CATEGORIES:
+        if category in settings:
+            _validate_setting(category, settings[category], str, choices=VALID_ACTIONS)
+
+
+def get_setting_default(setting: str) -> Any:
+    for schema in (SEARCH_SETTINGS_SCHEMA, CLEANUP_SETTINGS_SCHEMA):
+        if setting in schema:
+            return schema[setting]["default"]
+    raise KeyError(f"Unknown setting: {setting}")
+
+
+def load_config(path: str) -> dict:
+    with open(path, encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+    if config is None:
+        config = {}
+    config = _expand_env_vars(config)
+    return parse_config(config)
+
+
+def parse_active_hours(value: str) -> tuple[datetime.time, datetime.time]:
+    start_str, end_str = value.split("-")
+    return _parse_hhmm(start_str), _parse_hhmm(end_str)
+
+
+def parse_config(config: dict) -> dict:
+    if not isinstance(config, dict):
+        raise ValueError("Configuration file must be a YAML mapping at the top level.")
+
+    for key in REQUIRED_TOP_LEVEL:
+        if key not in config:
+            raise ValueError(f"Missing required top-level key: '{key}'")
+
+    search_settings = dict(config.get("global", {}))
+    if not isinstance(search_settings, dict):
+        raise ValueError("'global' must be a YAML mapping.")
+    _apply_interval_conversions(search_settings)
+    _validate_search_settings(search_settings, SEARCH_SETTINGS_SCHEMA)
+
+    cleanup_settings = dict(config.get("killarr", {}))
+    if not isinstance(cleanup_settings, dict):
+        raise ValueError("'killarr' must be a YAML mapping.")
+    _validate_cleanup_settings(cleanup_settings, CLEANUP_SETTINGS_SCHEMA)
+    _validate_stall_actions(cleanup_settings)
+
+    raw_instances = config.get("instances", {})
+    if not isinstance(raw_instances, dict):
+        raise ValueError("'instances' must be a YAML mapping.")
+
+    final_instances: dict[str, list] = {"radarr": [], "sonarr": [], "lidarr": []}
+    all_empty = True
+
+    for instance_name, instance_config in raw_instances.items():
+        if not isinstance(instance_config, dict):
+            raise ValueError(f"Instance '{instance_name}' must be a YAML mapping.")
+        parsed = _parse_instance(instance_name, instance_config)
+        if parsed is not None:
+            inst_type, inst = parsed
+            all_empty = False
+            final_instances[inst_type].append(inst)
+
+    if all_empty:
+        raise ValueError("No instances defined under 'instances'. Add at least one Radarr, Sonarr, or Lidarr instance.")
+
+    return {
+        "search_settings": search_settings,
+        "cleanup_settings": cleanup_settings,
+        "instances": final_instances,
+    }

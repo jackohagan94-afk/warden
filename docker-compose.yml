@@ -1,0 +1,22 @@
+services:
+  warden:
+    image: warden:latest
+    container_name: warden
+    hostname: warden
+    restart: unless-stopped
+    environment:
+      TZ: Australia/Brisbane
+      LOG_LEVEL: INFO
+      WARDEN_MODE: both
+      SONARR_TV_API_KEY: ${SONARR_TV_API_KEY}
+      SONARR_ANIME_API_KEY: ${SONARR_ANIME_API_KEY}
+      RADARR_API_KEY: ${RADARR_API_KEY}
+      LIDARR_API_KEY: ${LIDARR_API_KEY}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    external: true
