@@ -1,9 +1,11 @@
 """Warden unified entry point.
 
 Supports three operational modes via WARDEN_MODE env var:
-- search: automated media search scheduling (Warden)
-- cleanup: stalled download removal (Killarr)
-- both: run search and cleanup in separate threads (default)
+- warden: run both vigilance (search) and defence (cleanup) (default)
+- vigilance: run only search (Warden)
+- defence: run only cleanup (Killarr)
+
+Legacy mode values are also accepted: both, search, cleanup.
 """
 
 import logging
@@ -39,6 +41,15 @@ logger = logging.getLogger(__name__)
 
 _MAX_CONNECTION_ATTEMPTS: int = 3
 _RETRY_DELAY_SECONDS: int = 10
+
+_MODE_MAP = {
+    "warden": "both",
+    "vigilance": "search",
+    "defence": "cleanup",
+    "both": "both",
+    "search": "search",
+    "cleanup": "cleanup",
+}
 
 
 def _load_config_from_paths(config_paths: list[str]) -> dict | None:
@@ -149,23 +160,25 @@ def run() -> None:
         logger.error("All configured *arr instances failed to connect. Check network connectivity and instance URLs.")
         sys.exit(1)
 
-    mode = os.environ.get("WARDEN_MODE", "both").lower()
+    raw_mode = os.environ.get("WARDEN_MODE", "warden").lower()
+    mode = _MODE_MAP.get(raw_mode)
+    if mode is None:
+        logger.warning(f"Unrecognized WARDEN_MODE '{raw_mode}'. Defaulting to 'warden'.")
+        mode = "both"
 
     if mode == "search":
-        logger.info("Running in SEARCH-only mode (Warden).")
+        logger.info("Running in Vigilance mode (search only).")
         run_searcher_loop(active_clients, search_settings)
     elif mode == "cleanup":
-        logger.info("Running in CLEANUP-only mode (Killarr).")
+        logger.info("Running in Defence mode (cleanup only).")
         run_cleaner_loop(active_clients, cleanup_settings)
     else:
-        if mode != "both":
-            logger.warning(f"Unrecognized WARDEN_MODE '{mode}'. Defaulting to 'both'.")
-        logger.info("Running in AIO mode (Warden + Killarr).")
+        logger.info("Running in Warden mode (Vigilance + Defence).")
         searcher_thread = threading.Thread(
-            target=run_searcher_loop, args=(active_clients, search_settings), daemon=True, name="warden-searcher"
+            target=run_searcher_loop, args=(active_clients, search_settings), daemon=True, name="vigilance"
         )
         cleaner_thread = threading.Thread(
-            target=run_cleaner_loop, args=(active_clients, cleanup_settings), daemon=True, name="killarr-cleaner"
+            target=run_cleaner_loop, args=(active_clients, cleanup_settings), daemon=True, name="defence"
         )
         searcher_thread.start()
         cleaner_thread.start()
