@@ -55,6 +55,8 @@ _CATEGORY_MAP: dict[str, list[str]] = {
         "matched to album by id",
         "track does not belong to album",
         "manual import required",
+        "album match is not close enough",
+        "has missing tracks",
     ],
     "no_files": [
         "no audio files found",
