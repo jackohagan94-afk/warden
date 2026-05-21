@@ -51,7 +51,8 @@ def _allocate_slots(limit: int, client_backlogs: dict) -> list[tuple]:
     winners: list[tuple] = []
     pools = {client: list(items) for client, items in client_backlogs.items() if items}
     sorted_clients = sorted(
-        pools.keys(), key=lambda clt: (-getattr(clt, "weight", 1.0), getattr(clt, "name", "")),
+        pools.keys(),
+        key=lambda clt: (-getattr(clt, "weight", 1.0), getattr(clt, "name", "")),
     )
     while pools and (limit == -1 or len(winners) < limit):
         for client in list(sorted_clients):

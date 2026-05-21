@@ -1,18 +1,26 @@
 # Warden — Unified Configuration
 # Supports both search (Warden) and cleanup (Killarr) modes.
-# WARDEN_MODE=both runs both; =search or =cleanup runs one only.
+# WARDEN_MODE=warden runs both; =vigilance or =defence runs one only.
+# Legacy values both/search/cleanup are still accepted.
 
 # ---------------------------------------------------------------------------
 # Warden — automated search scheduling
 # ---------------------------------------------------------------------------
 global:
+  active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   dry_run: false
   run_interval_minutes: 30          # Run missing/upgrade cycles every 30 minutes
+  run_interval_minutes_missing:     # Optional missing-only interval in minutes
+  run_interval_minutes_upgrade:     # Optional upgrade-only interval in minutes
   stagger_interval_seconds: 10      # Wait 10s between individual searches
   retry_interval_days: 5            # Skip items searched within last 5 days
+  retry_interval_days_missing:      # Optional missing-only retry window in days
+  retry_interval_days_upgrade:      # Optional upgrade-only retry window in days
   missing_batch_size: 25            # Up to 25 missing items per cycle
   upgrade_batch_size: 0             # Upgrades disabled (enable with positive number)
   search_order: release_date_ascending
+  interleave_instances: false       # Alternate searches between instances
+  interleave_types: true            # Alternate missing and upgrade searches
   fetch_page_size: 2000             # Records per API request
   fetch_timeout_seconds: 120        # HTTP request timeout
   circuit_breaker_threshold: 3      # Skip instance after 3 consecutive fetch failures
@@ -22,11 +30,15 @@ global:
   search_after_cleanup: true        # Search replacement after retry/blocklist cleanup
   search_after_cleanup_actions: [retry, blocklist]
   radarr_collection_search_mode: "off" # off | detect | force (force is experimental)
+  season_packs: false               # Sonarr: false | true | ratio (0-1) | min episode count
+  include_tags: []                  # Optional *Arr tag labels to include
+  exclude_tags: []                  # Optional *Arr tag labels to exclude
 
 # ---------------------------------------------------------------------------
 # Killarr — stalled download cleanup
 # ---------------------------------------------------------------------------
 killarr:
+  active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   interval: 600                     # Run every 10 minutes
   stagger_interval_seconds: 5
   dry_run: false
@@ -36,6 +48,14 @@ killarr:
   max_cleanup_queue_records: 0      # 0 = unlimited, positive = cap total records fetched
   max_removals_per_instance: 25     # Per-instance cleanup cap each cycle; 0 = no cap
   delete_timeout_seconds: 15        # Timeout for queue deletion calls
+  retry_interval_minutes: 0         # Cooldown before re-evaluating removed items (0 = off)
+  removal_order: api_order          # api_order | age_ascending | age_descending
+  cleanup_search_scope: episode     # Sonarr replacement search: episode | season | series
+  protect_downloading_series: false # Hold stalled Sonarr items when same series is active
+  interleave_instances: false       # Alternate removals between instances
+  search_after_cleanup:             # Optional override for global search_after_cleanup
+  include_tags: []                  # Optional *Arr tag labels to include
+  exclude_tags: []                  # Optional *Arr tag labels to exclude
 
   # Action per stall reason: ignore | remove | retry | blocklist
   dangerous_file: blocklist

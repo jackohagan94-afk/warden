@@ -54,7 +54,9 @@ def _format_retry_interval_str(retry_days: int, retry_missing: int | None, retry
 
 
 def _format_run_interval_str(
-    run_interval_m: int, run_interval_missing_m: int | None, run_interval_upgrade_m: int | None,
+    run_interval_m: int,
+    run_interval_missing_m: int | None,
+    run_interval_upgrade_m: int | None,
 ) -> str:
     if run_interval_missing_m is not None or run_interval_upgrade_m is not None:
         eff_missing_m = run_interval_missing_m if run_interval_missing_m is not None else run_interval_m
@@ -86,14 +88,16 @@ def _seconds_until_window_open(start: datetime.time, now: datetime.time, today: 
 
 
 def _allocate_slots(
-    limit: int, client_backlogs: dict[Any, list[MediaItem]],
+    limit: int,
+    client_backlogs: dict[Any, list[MediaItem]],
 ) -> list[tuple[Any, MediaItem]]:
     winners: list[tuple[Any, MediaItem]] = []
     pools = {client: list(items) for client, items in client_backlogs.items() if items}
     if limit == 0 or not pools:
         return []
     sorted_clients = sorted(
-        pools.keys(), key=lambda clt: (-getattr(clt, "weight", 1.0), getattr(clt, "name", "")),
+        pools.keys(),
+        key=lambda clt: (-getattr(clt, "weight", 1.0), getattr(clt, "name", "")),
     )
     while pools and (limit == -1 or len(winners) < limit):
         for client in list(sorted_clients):
@@ -115,7 +119,8 @@ def _allocate_slots(
 
 
 def _clients_in_allocation_order(
-    allocated_missing: list[tuple[Any, MediaItem]], allocated_upgrade: list[tuple[Any, MediaItem]],
+    allocated_missing: list[tuple[Any, MediaItem]],
+    allocated_upgrade: list[tuple[Any, MediaItem]],
 ) -> list[Any]:
     seen: set[Any] = set()
     clients: list[Any] = []
@@ -160,7 +165,10 @@ def _build_final_queue(
 
 
 def _format_cycle_complete_log(
-    ran_missing: bool, ran_upgrade: bool, next_missing_secs: float, next_upgrade_secs: float,
+    ran_missing: bool,
+    ran_upgrade: bool,
+    next_missing_secs: float,
+    next_upgrade_secs: float,
 ) -> str:
     types = []
     if ran_missing:
@@ -170,7 +178,9 @@ def _format_cycle_complete_log(
     ran_str = ", ".join(types)
     next_missing_m = max(0, math.ceil(next_missing_secs / 60))
     next_upgrade_m = max(0, math.ceil(next_upgrade_secs / 60))
-    return f"--- Search cycle complete ({ran_str}). Next: missing in {next_missing_m}m, upgrade in {next_upgrade_m}m. ---"
+    return (
+        f"--- Search cycle complete ({ran_str}). Next: missing in {next_missing_m}m, upgrade in {next_upgrade_m}m. ---"
+    )
 
 
 def _resolve_interval_secs(settings: dict, specific_key: str) -> float:
@@ -322,7 +332,8 @@ def run_searcher_loop(active_clients: list[ArrClient], settings: dict) -> None:
         now = time.monotonic()
         logger.info(
             _format_cycle_complete_log(
-                run_missing, run_upgrade,
+                run_missing,
+                run_upgrade,
                 missing_interval_secs - (now - last_missing_run),
                 upgrade_interval_secs - (now - last_upgrade_run),
             )

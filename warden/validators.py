@@ -56,7 +56,11 @@ _CATEGORY_MAP: dict[str, list[str]] = {
         "track does not belong to album",
         "manual import required",
         "album match is not close enough",
+        "couldn't find similar album",
+        "failed to import track",
         "has missing tracks",
+        "permissions error",
+        "worst track match",
     ],
     "no_files": [
         "no audio files found",
@@ -110,13 +114,9 @@ def _validate_season_packs(setting: str, value: Any) -> None:
         return
     if isinstance(value, (int, float)):
         if isinstance(value, float) and (value <= 0 or value >= 1):
-            raise ValueError(
-                f"'{setting}' as a float ratio must be between 0 and 1 (exclusive), got {value}."
-            )
+            raise ValueError(f"'{setting}' as a float ratio must be between 0 and 1 (exclusive), got {value}.")
         if isinstance(value, int) and value < 1:
-            raise ValueError(
-                f"'{setting}' as an integer threshold must be >= 1, got {value}."
-            )
+            raise ValueError(f"'{setting}' as an integer threshold must be >= 1, got {value}.")
         return
     raise ValueError(
         f"'{setting}' must be a boolean, a positive integer, or a float ratio (0-1), got {type(value).__name__}."

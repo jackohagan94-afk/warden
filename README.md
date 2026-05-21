@@ -81,7 +81,11 @@ Configure how Warden hunts for missing and upgrade media:
 
 ```yaml
 global:
+  dry_run: false                    # Log intended searches without sending commands
+  active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   run_interval_minutes: 30          # How often to check for new items
+  run_interval_minutes_missing:     # Optional missing-only interval in minutes
+  run_interval_minutes_upgrade:     # Optional upgrade-only interval in minutes
   missing_batch_size: 25            # Items searched per cycle (0 = disabled, -1 = unlimited)
   upgrade_batch_size: 0             # Upgrade searches per cycle (0 = disabled)
   search_order: release_date_ascending
@@ -99,6 +103,8 @@ global:
   search_after_cleanup_actions: [retry, blocklist]
   api_request_interval_seconds: 2   # Min delay between mutating API calls
   search_jitter_seconds: 3          # Random extra delay to avoid burst patterns
+  include_tags: []                  # Optional *Arr tag labels to include
+  exclude_tags: []                  # Optional *Arr tag labels to exclude
 ```
 
 #### Season Packs (Sonarr)
@@ -120,6 +126,8 @@ Configure how Warden defends your library from problematic downloads:
 
 ```yaml
 killarr:
+  dry_run: false                    # Log intended removals without deleting queue items
+  active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   interval: 600                     # Run every 10 minutes
   batch_size: -1                    # Process all stalled items (-1 = unlimited, 0 = disabled)
   stagger_interval_seconds: 5       # Delay between removals
@@ -132,6 +140,10 @@ killarr:
   removal_order: api_order          # api_order | age_ascending | age_descending
   cleanup_search_scope: episode     # episode | season | series (what ID to search after removal)
   protect_downloading_series: false # Hold back stalled items from series with active downloads
+  interleave_instances: false       # Alternate removals between instances
+  search_after_cleanup:             # Optional override for global search_after_cleanup
+  include_tags: []                  # Optional *Arr tag labels to include
+  exclude_tags: []                  # Optional *Arr tag labels to exclude
 
   # Action per stall reason: ignore | remove | retry | blocklist
   dangerous_file: blocklist
@@ -163,11 +175,11 @@ killarr:
 
 #### Active Hours
 
-Restrict both modes to specific hours (UTC):
+Restrict both modes to a specific local-time window. Set `TZ` in the container environment to control the timezone used by these checks:
 
 ```yaml
 global:
-  active_hours: "22:00-06:00"     # Only run between 10 PM and 6 AM UTC
+  active_hours: "22:00-06:00"     # Only run between 10 PM and 6 AM local time
 ```
 
 Leave empty or omit for all hours (default).
@@ -192,6 +204,7 @@ instances:
   lidarr-instance:
     type: lidarr
     max_removals_per_instance: 5     # Override Defence cap for this instance only
+    manual_import: remove            # Override one cleanup stall category for this instance
     search_type: artist
 ```
 

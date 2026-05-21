@@ -15,14 +15,11 @@ import threading
 import time
 from pathlib import Path
 
-from warden.clients.arr import _CLIENT_MAP
-from warden.clients.arr import ArrClient
-from warden.clients.arr import CircuitBreaker
 from warden.cleaner import run_cleaner_loop
-from warden.config import CLEANUP_SETTINGS_SCHEMA
-from warden.config import SEARCH_SETTINGS_SCHEMA
-from warden.config import load_config
+from warden.clients.arr import _CLIENT_MAP, ArrClient, CircuitBreaker
+from warden.config import CLEANUP_SETTINGS_SCHEMA, SEARCH_SETTINGS_SCHEMA, load_config
 from warden.searcher import run_searcher_loop
+from warden.validators import STALL_CATEGORIES
 
 if "TZ" not in os.environ:
     os.environ["TZ"] = "UTC"
@@ -71,9 +68,7 @@ def _load_config_from_paths(config_paths: list[str]) -> dict | None:
     if error_message:
         logger.error(error_message)
     elif config is None:
-        logger.error(
-            "No config.yaml found. Copy config.example.yaml to config.yaml and fill in your instance details."
-        )
+        logger.error("No config.yaml found. Copy config.example.yaml to config.yaml and fill in your instance details.")
     return config
 
 
@@ -87,7 +82,7 @@ def build_arr_clients(
     registry = client_registry if client_registry is not None else _CLIENT_MAP
     clients: list[ArrClient] = []
     search_instance_keys = set(SEARCH_SETTINGS_SCHEMA)
-    cleanup_instance_keys = set(CLEANUP_SETTINGS_SCHEMA)
+    cleanup_instance_keys = set(CLEANUP_SETTINGS_SCHEMA) | set(STALL_CATEGORIES)
     for arr_type, client_class in registry.items():
         for instance in instances_config.get(arr_type, []):
             search_overrides = {key: instance[key] for key in search_instance_keys if key in instance}

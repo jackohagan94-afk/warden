@@ -95,8 +95,12 @@ class ArrClient(ABC):
         self.cleanup_retry_minutes = cleanup_settings.get("retry_interval_minutes", 0)
         self.delete_timeout_seconds = cleanup_settings.get("delete_timeout_seconds", 15)
         cleanup_override = cleanup_settings.get("search_after_cleanup")
-        self.search_after_cleanup = search_settings.get("search_after_cleanup", True) if cleanup_override is None else cleanup_override
-        self.search_after_cleanup_actions = set(search_settings.get("search_after_cleanup_actions", ["retry", "blocklist"]))
+        self.search_after_cleanup = (
+            search_settings.get("search_after_cleanup", True) if cleanup_override is None else cleanup_override
+        )
+        self.search_after_cleanup_actions = set(
+            search_settings.get("search_after_cleanup_actions", ["retry", "blocklist"])
+        )
         self._retry_state: dict[int | str, datetime.datetime] = {}
         self._circuit_breaker_fetch = search_settings.get("circuit_breaker_threshold", 0)
         self._circuit_breaker_cleanup = cleanup_settings.get("circuit_breaker_threshold", 0)
@@ -196,11 +200,23 @@ class ArrClient(ABC):
             self._sleep_func(sleep_for)
         self._last_mutating_request = self._time_func()
 
+    def _prepare_search_request(self) -> None:
+        if self.search_jitter_seconds > 0:
+            delay = random.uniform(0, self.search_jitter_seconds)
+            if delay > 0:
+                logger.debug(f"[{self.name}] Applying search jitter for {delay:.2f}s.")
+                self._sleep_func(delay)
+        self._throttle_mutating_request()
+
     # ----- tag filtering -----
 
     def _resolve_tag_ids(self) -> None:
-        include_names: list[str] = self.search_settings.get("include_tags", []) or self.cleanup_settings.get("include_tags", [])
-        exclude_names: list[str] = self.search_settings.get("exclude_tags", []) or self.cleanup_settings.get("exclude_tags", [])
+        include_names: list[str] = self.search_settings.get("include_tags", []) or self.cleanup_settings.get(
+            "include_tags", []
+        )
+        exclude_names: list[str] = self.search_settings.get("exclude_tags", []) or self.cleanup_settings.get(
+            "exclude_tags", []
+        )
         if include_names or exclude_names:
             url = f"{self.url}{self.ENDPOINT_TAG}"
             try:
@@ -285,7 +301,11 @@ class ArrClient(ABC):
         return (record["id"], reason, self._get_record_title(record))
 
     def _process_record(
-        self, record: dict, reason: str, seen: set[int], check_availability: bool = False,
+        self,
+        record: dict,
+        reason: str,
+        seen: set[int],
+        check_availability: bool = False,
     ) -> MediaItem | None:
         record_id = record.get("id")
         if record_id is None or record_id in seen:
@@ -306,7 +326,11 @@ class ArrClient(ABC):
         return self._extract_item(record, reason)
 
     def _get_target_media(
-        self, endpoint: str, target_batch_size: int, reason: str, seen: set[int],
+        self,
+        endpoint: str,
+        target_batch_size: int,
+        reason: str,
+        seen: set[int],
         check_availability: bool = False,
     ) -> list[MediaItem]:
         items: list[MediaItem] = []
@@ -361,10 +385,17 @@ class ArrClient(ABC):
         try:
             seen: set[int] = set()
             missing_items = self._get_target_media(
-                self.ENDPOINT_WANTED_MISSING, missing_batch_size, "missing", seen, check_availability=True,
+                self.ENDPOINT_WANTED_MISSING,
+                missing_batch_size,
+                "missing",
+                seen,
+                check_availability=True,
             )
             upgrade_items = self._get_target_media(
-                self.ENDPOINT_WANTED_CUTOFF, upgrade_batch_size, "upgrade", seen,
+                self.ENDPOINT_WANTED_CUTOFF,
+                upgrade_batch_size,
+                "upgrade",
+                seen,
             )
             if upgrade_batch_size != 0:
                 supplemental = self._get_custom_format_score_unmet_records()
@@ -400,12 +431,14 @@ class ArrClient(ABC):
             url = f"{self.url}{self.ENDPOINT_COMMAND}"
             payload = {"name": self._command_name, self._id_field: [item_id]}
             try:
-                self._throttle_mutating_request()
+                self._prepare_search_request()
                 response = self.session.post(url, json=payload, timeout=self.fetch_timeout)
                 response.raise_for_status()
                 logger.info(f"[{self.name}] Searching ({reason}): {title} ({index}/{total})")
             except requests.RequestException as error:
-                logger.error(f"[{self.name}] Failed to trigger {self._command_name} for {title} (ID: {item_id}): {error}")
+                logger.error(
+                    f"[{self.name}] Failed to trigger {self._command_name} for {title} (ID: {item_id}): {error}"
+                )
 
     # ----- queue / cleanup pipeline -----
 
@@ -424,7 +457,7 @@ class ArrClient(ABC):
             return True
         except requests.RequestException as error:
             logger.error(f"[{self.name}] Failed to check queue size: {error}")
-            return True
+            return False
 
     def is_queue_too_large(self) -> bool:
         return not self._check_queue_size()
@@ -473,7 +506,14 @@ class ArrClient(ABC):
         return set()
 
     def get_stalled_items(self) -> tuple[list[QueueItem], dict[str, int]]:
-        empty_stats = {"total_evaluated": 0, "ignored": 0, "tag_filtered": 0, "not_stalled": 0, "retry_interval": 0, "series_protected": 0}
+        empty_stats = {
+            "total_evaluated": 0,
+            "ignored": 0,
+            "tag_filtered": 0,
+            "not_stalled": 0,
+            "retry_interval": 0,
+            "series_protected": 0,
+        }
         if self._circuit_breaker_cleanup > 0 and self.circuit_breaker.is_open(f"{self.name}_cleanup"):
             logger.warning(f"[{self.name}] Circuit breaker open for cleanup — skipping.")
             return [], empty_stats
@@ -513,8 +553,7 @@ class ArrClient(ABC):
                 category = classify_stall(messages)
                 if category == "unknown":
                     logger.warning(
-                        f"[{self.name}] Unrecognized status messages for \"{title}\" "
-                        f"— please report: {messages}"
+                        f'[{self.name}] Unrecognized status messages for "{title}" — please report: {messages}'
                     )
                 action = self._resolve_cleanup_action(category)
 
@@ -548,7 +587,7 @@ class ArrClient(ABC):
             raise
 
     def execute_removal(self, item: QueueItem, index: int, total: int) -> None:
-        logger.debug(f"[{self.name}] Stall details for \"{item.title}\": {item.messages}")
+        logger.debug(f'[{self.name}] Stall details for "{item.title}": {item.messages}')
         if self.dry_run:
             logger.info(
                 f"[{self.name}] [DRY RUN] Would {item.action} ({item.category}): {item.title} ({index}/{total})"
@@ -618,7 +657,7 @@ class LidarrClient(ArrClient):
         return self._is_date_past(record.get("releaseDate"))
 
     def _get_media_id(self, record: dict) -> int:
-        return record["albumId"]
+        return record.get("albumId") or record["id"]
 
     def _fetch_quality_profile_cutoffs(self) -> dict[int, int]:
         return {}
@@ -692,7 +731,7 @@ class LidarrClient(ArrClient):
                 url = f"{self.url}{self.ENDPOINT_COMMAND}"
                 payload = {"name": "ArtistSearch", "artistId": artist_id}
                 try:
-                    self._throttle_mutating_request()
+                    self._prepare_search_request()
                     response = self.session.post(url, json=payload, timeout=self.fetch_timeout)
                     response.raise_for_status()
                     logger.info(f"[{self.name}] Searching ({reason}): {title} ({index}/{total})")
@@ -733,12 +772,14 @@ class RadarrClient(ArrClient):
             url = f"{self.url}{self.ENDPOINT_COMMAND}"
             payload = {"name": "CollectionSearch", "collectionIds": [collection_id]}
             try:
-                self._throttle_mutating_request()
+                self._prepare_search_request()
                 response = self.session.post(url, json=payload, timeout=self.fetch_timeout)
                 response.raise_for_status()
                 logger.info(f"[{self.name}] Searching ({reason}, collection): {title} ({index}/{total})")
             except requests.RequestException as error:
-                logger.error(f"[{self.name}] CollectionSearch failed for {title}; falling back to MoviesSearch: {error}")
+                logger.error(
+                    f"[{self.name}] CollectionSearch failed for {title}; falling back to MoviesSearch: {error}"
+                )
                 super()._trigger_single(collection_id, reason, title, index, total)
             return
         super()._trigger_single(item_id, reason, title, index, total)
@@ -788,7 +829,9 @@ class RadarrClient(ArrClient):
             raise
 
     def _get_media_to_search_by_collection(
-        self, missing_batch_size: int, upgrade_batch_size: int,
+        self,
+        missing_batch_size: int,
+        upgrade_batch_size: int,
     ) -> list[MediaItem]:
         if self.collection_search_mode == "force":
             return self._get_collections_force(missing_batch_size)
@@ -940,8 +983,7 @@ class RadarrClient(ArrClient):
         if candidates:
             scores = self._fetch_movie_file_scores(list(candidates.keys()))
             result = [
-                movie for file_id, (movie, cutoff_score) in candidates.items()
-                if scores.get(file_id, 0) < cutoff_score
+                movie for file_id, (movie, cutoff_score) in candidates.items() if scores.get(file_id, 0) < cutoff_score
             ]
         return result
 
@@ -1041,13 +1083,18 @@ class SonarrClient(ArrClient):
         return result
 
     def _is_season_still_airing(
-        self, series_id: int, season_number: int, season_metadata: dict[tuple[int, int], dict],
+        self,
+        series_id: int,
+        season_number: int,
+        season_metadata: dict[tuple[int, int], dict],
     ) -> bool:
         next_airing = season_metadata.get((series_id, season_number), {}).get("next_airing")
         return bool(next_airing and not self._is_date_past(next_airing))
 
     def _meets_season_pack_threshold(
-        self, series_id: int, season_number: int,
+        self,
+        series_id: int,
+        season_number: int,
         season_record_counts: dict[tuple[int, int], int],
         season_metadata: dict[tuple[int, int], dict],
     ) -> bool:
@@ -1076,8 +1123,12 @@ class SonarrClient(ArrClient):
         return f"{series_title} - Season {season_number:02d}"
 
     def _collect_season_pack_records(
-        self, records: list[dict], batch_size: int, reason: str,
-        seen_seasons: set[tuple[int, int]], check_availability: bool,
+        self,
+        records: list[dict],
+        batch_size: int,
+        reason: str,
+        seen_seasons: set[tuple[int, int]],
+        check_availability: bool,
         season_metadata: dict[tuple[int, int], dict],
         season_record_counts: dict[tuple[int, int], int],
     ) -> list[MediaItem]:
@@ -1124,7 +1175,7 @@ class SonarrClient(ArrClient):
                 url = f"{self.url}{self.ENDPOINT_COMMAND}"
                 payload = {"name": "SeriesSearch", "seriesId": series_id}
                 try:
-                    self._throttle_mutating_request()
+                    self._prepare_search_request()
                     response = self.session.post(url, json=payload, timeout=self.fetch_timeout)
                     response.raise_for_status()
                     logger.info(f"[{self.name}] Searching ({reason}): {title} ({index}/{total})")
@@ -1145,7 +1196,7 @@ class SonarrClient(ArrClient):
             url = f"{self.url}{self.ENDPOINT_COMMAND}"
             payload = {"name": "SeasonSearch", "seriesId": series_id, "seasonNumber": season_number}
             try:
-                self._throttle_mutating_request()
+                self._prepare_search_request()
                 response = self.session.post(url, json=payload, timeout=self.fetch_timeout)
                 response.raise_for_status()
                 logger.info(f"[{self.name}] Searching ({reason}): {title} ({index}/{total})")
@@ -1244,7 +1295,13 @@ class SonarrClient(ArrClient):
                 self._sort_records_client_side(missing_records)
                 missing_counts = self._tally_season_records(missing_records)
                 missing_items = self._collect_season_pack_records(
-                    missing_records, missing_batch_size, "missing", seen_seasons, True, season_metadata, missing_counts,
+                    missing_records,
+                    missing_batch_size,
+                    "missing",
+                    seen_seasons,
+                    True,
+                    season_metadata,
+                    missing_counts,
                 )
 
             if upgrade_batch_size != 0:
@@ -1252,16 +1309,30 @@ class SonarrClient(ArrClient):
                 self._sort_records_client_side(upgrade_records)
                 upgrade_counts = self._tally_season_records(upgrade_records)
                 upgrade_items = self._collect_season_pack_records(
-                    upgrade_records, upgrade_batch_size, "upgrade", seen_seasons, False, season_metadata, upgrade_counts,
+                    upgrade_records,
+                    upgrade_batch_size,
+                    "upgrade",
+                    seen_seasons,
+                    False,
+                    season_metadata,
+                    upgrade_counts,
                 )
                 upgrades_so_far = len(upgrade_items)
-                remaining = max(0, upgrade_batch_size - upgrades_so_far) if upgrade_batch_size > 0 else upgrade_batch_size
+                remaining = (
+                    max(0, upgrade_batch_size - upgrades_so_far) if upgrade_batch_size > 0 else upgrade_batch_size
+                )
                 if remaining != 0:
                     supplemental = self._get_custom_format_score_unmet_records()
                     self._sort_records_client_side(supplemental)
                     supplemental_counts = self._tally_season_records(supplemental)
                     upgrade_items += self._collect_season_pack_records(
-                        supplemental, remaining, "upgrade", seen_seasons, False, season_metadata, supplemental_counts,
+                        supplemental,
+                        remaining,
+                        "upgrade",
+                        seen_seasons,
+                        False,
+                        season_metadata,
+                        supplemental_counts,
                     )
 
             merged = self._interleave_items(missing_items, upgrade_items)
@@ -1275,9 +1346,7 @@ class SonarrClient(ArrClient):
 
     def _fetch_episode_file_scores(self, series_id: int, cutoff_score: int) -> set[int]:
         episode_files = self._fetch_list(self.ENDPOINT_EPISODE_FILE, {"seriesId": series_id})
-        return {
-            ef["id"] for ef in episode_files if ef.get("customFormatScore", 0) < cutoff_score
-        }
+        return {ef["id"] for ef in episode_files if ef.get("customFormatScore", 0) < cutoff_score}
 
     def _get_custom_format_upgrade_records(self, profile_cutoffs: dict[int, int]) -> list[dict]:
         series_list = self._fetch_list(self.ENDPOINT_SERIES)

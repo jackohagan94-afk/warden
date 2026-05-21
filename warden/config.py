@@ -39,12 +39,12 @@ SEARCH_SETTINGS_SCHEMA = {
     "max_queue_size": {"default": 0, "type": int, "min_value": 0},
     "missing_batch_size": {"default": 20, "type": int, "allow_special_values": True},
     "radarr_collection_search_mode": {"default": "off", "type": str, "choices": ("off", "detect", "force")},
-    "retry_interval_days": {"default": 30, "type": int},
-    "retry_interval_days_missing": {"default": None, "type": int},
-    "retry_interval_days_upgrade": {"default": None, "type": int},
-    "run_interval_minutes": {"default": 60, "type": int},
-    "run_interval_minutes_missing": {"default": None, "type": int},
-    "run_interval_minutes_upgrade": {"default": None, "type": int},
+    "retry_interval_days": {"default": 30, "type": int, "min_value": 0},
+    "retry_interval_days_missing": {"default": None, "type": int, "min_value": 0},
+    "retry_interval_days_upgrade": {"default": None, "type": int, "min_value": 0},
+    "run_interval_minutes": {"default": 60, "type": int, "min_value": 1},
+    "run_interval_minutes_missing": {"default": None, "type": int, "min_value": 1},
+    "run_interval_minutes_upgrade": {"default": None, "type": int, "min_value": 1},
     "search_after_cleanup": {"default": True, "type": bool},
     "search_after_cleanup_actions": {"default": ["retry", "blocklist"], "type": list, "element_type": str},
     "search_order": {"default": "last_searched_ascending", "type": str, "choices": VALID_SEARCH_ORDERS},
@@ -82,6 +82,8 @@ def _apply_interval_conversions(settings: dict) -> None:
     if "interval" in settings and "run_interval_minutes" not in settings:
         if not isinstance(settings["interval"], int):
             raise ValueError("'global.interval' must be an integer.")
+        if settings["interval"] < 60:
+            raise ValueError("'global.interval' must be at least 60 seconds.")
         settings["run_interval_minutes"] = settings["interval"] // 60
     if "interval_missing" in settings:
         if not isinstance(settings["interval_missing"], int):
@@ -137,7 +139,9 @@ def _parse_instance(name: str, config: dict) -> tuple[str, dict] | None:
     if not inst_type:
         raise ValueError(f"Missing 'type' field for instance '{name}'. Must be one of: {', '.join(VALID_ARR_TYPES)}.")
     if inst_type not in VALID_ARR_TYPES:
-        raise ValueError(f"Invalid type '{inst_type}' for instance '{name}'. Must be one of: {', '.join(VALID_ARR_TYPES)}.")
+        raise ValueError(
+            f"Invalid type '{inst_type}' for instance '{name}'. Must be one of: {', '.join(VALID_ARR_TYPES)}."
+        )
     instance["name"] = name
     for field in ("url", "api_key"):
         if not instance.get(field):
@@ -146,7 +150,9 @@ def _parse_instance(name: str, config: dict) -> tuple[str, dict] | None:
     if not isinstance(instance["weight"], (int, float)) or instance["weight"] <= 0:
         raise ValueError(f"'weight' for instance '{name}' must be a positive number.")
 
-    search_type = instance.get("search_type", "").lower()
+    if isinstance(instance.get("search_type"), str):
+        instance["search_type"] = instance["search_type"].lower()
+    search_type = instance.get("search_type", "")
     if search_type and search_type not in VALID_SEARCH_TYPES:
         raise ValueError(f"Invalid search_type '{search_type}' for instance '{name}'.")
 
@@ -155,53 +161,64 @@ def _parse_instance(name: str, config: dict) -> tuple[str, dict] | None:
     return (inst_type, instance)
 
 
+def _validate_action_list(setting: str, value: list[str], prefix: str) -> None:
+    valid_actions = ", ".join(repr(action) for action in VALID_ACTIONS)
+    for action in value:
+        if action not in VALID_ACTIONS:
+            raise ValueError(f"'{prefix}.{setting}' entries must be one of: {valid_actions}.")
+
+
+def _validate_schema_setting(setting: str, value: Any, definition: dict, prefix: str) -> None:
+    if definition["default"] is None and value is None:
+        return
+    if "custom_validator" in definition:
+        definition["custom_validator"](setting, value)
+        return
+    _validate_setting(
+        setting,
+        value,
+        definition["type"],
+        definition.get("choices"),
+        allow_special_values=definition.get("allow_special_values", False),
+        min_value=definition.get("min_value"),
+        element_type=definition.get("element_type"),
+        validator=definition.get("validator"),
+        prefix=prefix,
+    )
+    if setting == "search_after_cleanup_actions":
+        _validate_action_list(setting, value, prefix)
+
+
 def _validate_search_settings(settings: dict, schema: dict) -> None:
     for setting, definition in schema.items():
         default = definition["default"]
         settings.setdefault(setting, list(default) if isinstance(default, list) else default)
-        if definition["default"] is None and settings[setting] is None:
-            continue
-        if "custom_validator" in definition:
-            definition["custom_validator"](setting, settings[setting])
-            continue
-        _validate_setting(
-            setting,
-            settings[setting],
-            definition["type"],
-            definition.get("choices"),
-            allow_special_values=definition.get("allow_special_values", False),
-            min_value=definition.get("min_value"),
-            element_type=definition.get("element_type"),
-            validator=definition.get("validator"),
-            prefix="global",
-        )
+        _validate_schema_setting(setting, settings[setting], definition, "global")
 
 
 def _validate_cleanup_settings(settings: dict, schema: dict) -> None:
     for setting, definition in schema.items():
         default = definition["default"]
         settings.setdefault(setting, list(default) if isinstance(default, list) else default)
-        if definition["default"] is None and settings[setting] is None:
-            continue
-        _validate_setting(
-            setting,
-            settings[setting],
-            definition["type"],
-            definition.get("choices"),
-            allow_special_values=definition.get("allow_special_values", False),
-            min_value=definition.get("min_value"),
-            element_type=definition.get("element_type"),
-            prefix="killarr",
-        )
-        validator = definition.get("validator")
-        if validator is not None:
-            validator(settings[setting])
+        _validate_schema_setting(setting, settings[setting], definition, "killarr")
 
 
 def _validate_stall_actions(settings: dict) -> None:
     for category in STALL_CATEGORIES:
         if category in settings:
             _validate_setting(category, settings[category], str, choices=VALID_ACTIONS)
+
+
+def _validate_instance_overrides(name: str, instance: dict) -> None:
+    seen: set[str] = set()
+    for schema in (SEARCH_SETTINGS_SCHEMA, CLEANUP_SETTINGS_SCHEMA):
+        for setting, definition in schema.items():
+            if setting in instance and setting not in seen:
+                _validate_schema_setting(setting, instance[setting], definition, f"instances.{name}")
+                seen.add(setting)
+    for category in STALL_CATEGORIES:
+        if category in instance:
+            _validate_setting(category, instance[category], str, choices=VALID_ACTIONS, prefix=f"instances.{name}")
 
 
 def get_setting_default(setting: str) -> Any:
@@ -258,6 +275,7 @@ def parse_config(config: dict) -> dict:
         parsed = _parse_instance(instance_name, instance_config)
         if parsed is not None:
             inst_type, inst = parsed
+            _validate_instance_overrides(instance_name, inst)
             all_empty = False
             final_instances[inst_type].append(inst)
 

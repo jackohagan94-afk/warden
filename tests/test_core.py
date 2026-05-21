@@ -1,20 +1,23 @@
 """Tests for Warden unified package."""
 
 from warden.cleaner import run_removal_cycle
-from warden.clients.arr import CircuitBreaker, QueueItem, RadarrClient, SonarrClient
-from warden.main import build_arr_clients
+from warden.clients.arr import CircuitBreaker, LidarrClient, QueueItem, RadarrClient, SonarrClient
 from warden.config import CLEANUP_SETTINGS_SCHEMA, SEARCH_SETTINGS_SCHEMA, parse_config
-from warden.searcher import _allocate_slots as allocate_search_slots, run_search_cycle
+from warden.main import build_arr_clients
+from warden.searcher import _allocate_slots as allocate_search_slots
+from warden.searcher import run_search_cycle
 from warden.validators import classify_stall
 
 
 class TestConfigParsing:
     def test_minimal_config(self) -> None:
-        config = parse_config({
-            "instances": {
-                "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+        config = parse_config(
+            {
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                }
             }
-        })
+        )
         assert config["search_settings"]["run_interval_minutes"] == 60
         assert config["search_settings"]["missing_batch_size"] == 20
         assert config["cleanup_settings"]["batch_size"] == 10
@@ -22,76 +25,100 @@ class TestConfigParsing:
         assert len(config["instances"]["radarr"]) == 1
 
     def test_custom_circuit_breaker(self) -> None:
-        config = parse_config({
-            "global": {"circuit_breaker_threshold": 5},
-            "killarr": {},
-            "instances": {
-                "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
-            },
-        })
+        config = parse_config(
+            {
+                "global": {"circuit_breaker_threshold": 5},
+                "killarr": {},
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                },
+            }
+        )
         assert config["search_settings"]["circuit_breaker_threshold"] == 5
 
     def test_max_queue_size(self) -> None:
-        config = parse_config({
-            "global": {"max_queue_size": 500},
-            "killarr": {},
-            "instances": {
-                "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
-            },
-        })
+        config = parse_config(
+            {
+                "global": {"max_queue_size": 500},
+                "killarr": {},
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                },
+            }
+        )
         assert config["search_settings"]["max_queue_size"] == 500
 
     def test_fetch_timeout(self) -> None:
-        config = parse_config({
-            "global": {"fetch_timeout_seconds": 180},
-            "killarr": {},
-            "instances": {
-                "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
-            },
-        })
+        config = parse_config(
+            {
+                "global": {"fetch_timeout_seconds": 180},
+                "killarr": {},
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                },
+            }
+        )
         assert config["search_settings"]["fetch_timeout_seconds"] == 180
 
     def test_interval_backward_compat(self) -> None:
-        config = parse_config({
-            "global": {"interval": 3600},
-            "killarr": {},
-            "instances": {
-                "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
-            },
-        })
+        config = parse_config(
+            {
+                "global": {"interval": 3600},
+                "killarr": {},
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                },
+            }
+        )
         assert config["search_settings"]["run_interval_minutes"] == 60
 
     def test_search_type_instance_config(self) -> None:
-        config = parse_config({
-            "instances": {
-                "MySonarr": {
-                    "type": "sonarr", "host": "http://sonarr:8989", "api_key": "abc123",
-                    "enabled": True, "search_type": "series",
-                },
-                "MyLidarr": {
-                    "type": "lidarr", "host": "http://lidarr:8686", "api_key": "abc123",
-                    "enabled": True, "search_type": "artist",
-                },
+        config = parse_config(
+            {
+                "instances": {
+                    "MySonarr": {
+                        "type": "sonarr",
+                        "host": "http://sonarr:8989",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "series",
+                    },
+                    "MyLidarr": {
+                        "type": "lidarr",
+                        "host": "http://lidarr:8686",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "artist",
+                    },
+                }
             }
-        })
+        )
         sonarr = config["instances"]["sonarr"][0]
         lidarr = config["instances"]["lidarr"][0]
         assert sonarr["search_type"] == "series"
         assert lidarr["search_type"] == "artist"
 
     def test_instance_search_type_reaches_client_settings(self) -> None:
-        config = parse_config({
-            "instances": {
-                "MySonarr": {
-                    "type": "sonarr", "host": "http://sonarr:8989", "api_key": "abc123",
-                    "enabled": True, "search_type": "series",
-                },
-                "MyLidarr": {
-                    "type": "lidarr", "host": "http://lidarr:8686", "api_key": "abc123",
-                    "enabled": True, "search_type": "artist",
-                },
+        config = parse_config(
+            {
+                "instances": {
+                    "MySonarr": {
+                        "type": "sonarr",
+                        "host": "http://sonarr:8989",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "series",
+                    },
+                    "MyLidarr": {
+                        "type": "lidarr",
+                        "host": "http://lidarr:8686",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "artist",
+                    },
+                }
             }
-        })
+        )
 
         clients = build_arr_clients(
             config["instances"], config["search_settings"], config["cleanup_settings"], CircuitBreaker(0)
@@ -103,19 +130,28 @@ class TestConfigParsing:
         }
 
     def test_instance_cleanup_settings_reach_client_settings(self) -> None:
-        config = parse_config({
-            "killarr": {"max_removals_per_instance": 20},
-            "instances": {
-                "MyLidarr": {
-                    "type": "lidarr", "host": "http://lidarr:8686", "api_key": "abc123",
-                    "enabled": True, "search_type": "artist", "max_removals_per_instance": 5,
+        config = parse_config(
+            {
+                "killarr": {"max_removals_per_instance": 20},
+                "instances": {
+                    "MyLidarr": {
+                        "type": "lidarr",
+                        "host": "http://lidarr:8686",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "artist",
+                        "max_removals_per_instance": 5,
+                    },
+                    "MySonarr": {
+                        "type": "sonarr",
+                        "host": "http://sonarr:8989",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "series",
+                    },
                 },
-                "MySonarr": {
-                    "type": "sonarr", "host": "http://sonarr:8989", "api_key": "abc123",
-                    "enabled": True, "search_type": "series",
-                },
-            },
-        })
+            }
+        )
 
         clients = build_arr_clients(
             config["instances"], config["search_settings"], config["cleanup_settings"], CircuitBreaker(0)
@@ -126,20 +162,110 @@ class TestConfigParsing:
             "MySonarr": 20,
         }
 
+    def test_instance_cleanup_action_override_reaches_client_settings(self) -> None:
+        config = parse_config(
+            {
+                "killarr": {"manual_import": "blocklist"},
+                "instances": {
+                    "MyLidarr": {
+                        "type": "lidarr",
+                        "host": "http://lidarr:8686",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "manual_import": "remove",
+                    },
+                },
+            }
+        )
+
+        clients = build_arr_clients(
+            config["instances"], config["search_settings"], config["cleanup_settings"], CircuitBreaker(0)
+        )
+
+        assert clients[0].cleanup_settings["manual_import"] == "remove"
+
+    def test_instance_override_validation_rejects_invalid_cleanup_type(self) -> None:
+        try:
+            parse_config(
+                {
+                    "instances": {
+                        "MyLidarr": {
+                            "type": "lidarr",
+                            "host": "http://lidarr:8686",
+                            "api_key": "abc123",
+                            "enabled": True,
+                            "max_removals_per_instance": "many",
+                        },
+                    },
+                }
+            )
+        except ValueError as error:
+            assert "'instances.MyLidarr.max_removals_per_instance' must be of type int" in str(error)
+        else:
+            raise AssertionError("Expected invalid per-instance cleanup override to be rejected")
+
+    def test_search_type_is_normalized_for_instance_overrides(self) -> None:
+        config = parse_config(
+            {
+                "instances": {
+                    "MySonarr": {
+                        "type": "sonarr",
+                        "host": "http://sonarr:8989",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "Series",
+                    },
+                },
+            }
+        )
+
+        assert config["instances"]["sonarr"][0]["search_type"] == "series"
+
+    def test_invalid_search_after_cleanup_action_is_rejected(self) -> None:
+        try:
+            parse_config(
+                {
+                    "global": {"search_after_cleanup_actions": ["retry", "delete"]},
+                    "instances": {
+                        "MyRadarr": {
+                            "type": "radarr",
+                            "host": "http://radarr:7878",
+                            "api_key": "abc123",
+                            "enabled": True,
+                        },
+                    },
+                }
+            )
+        except ValueError as error:
+            assert "'global.search_after_cleanup_actions' entries must be one of" in str(error)
+        else:
+            raise AssertionError("Expected invalid search_after_cleanup_actions value to be rejected")
+
     def test_unset_instance_search_type_uses_client_default(self) -> None:
-        config = parse_config({
-            "instances": {
-                "MyRadarr": {
-                    "type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True,
+        config = parse_config(
+            {
+                "instances": {
+                    "MyRadarr": {
+                        "type": "radarr",
+                        "host": "http://radarr:7878",
+                        "api_key": "abc123",
+                        "enabled": True,
+                    },
+                    "MySonarr": {
+                        "type": "sonarr",
+                        "host": "http://sonarr:8989",
+                        "api_key": "abc123",
+                        "enabled": True,
+                    },
+                    "MyLidarr": {
+                        "type": "lidarr",
+                        "host": "http://lidarr:8686",
+                        "api_key": "abc123",
+                        "enabled": True,
+                    },
                 },
-                "MySonarr": {
-                    "type": "sonarr", "host": "http://sonarr:8989", "api_key": "abc123", "enabled": True,
-                },
-                "MyLidarr": {
-                    "type": "lidarr", "host": "http://lidarr:8686", "api_key": "abc123", "enabled": True,
-                },
-            },
-        })
+            }
+        )
 
         clients = build_arr_clients(
             config["instances"], config["search_settings"], config["cleanup_settings"], CircuitBreaker(0)
@@ -152,22 +278,31 @@ class TestConfigParsing:
         }
 
     def test_disabled_instance_skipped(self) -> None:
-        config = parse_config({
-            "instances": {
-                "EnabledRadarr": {
-                    "type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True,
+        config = parse_config(
+            {
+                "instances": {
+                    "EnabledRadarr": {
+                        "type": "radarr",
+                        "host": "http://radarr:7878",
+                        "api_key": "abc123",
+                        "enabled": True,
+                    },
+                    "DisabledSonarr": {
+                        "type": "sonarr",
+                        "host": "http://sonarr:8989",
+                        "api_key": "abc123",
+                        "enabled": False,
+                    },
                 },
-                "DisabledSonarr": {
-                    "type": "sonarr", "host": "http://sonarr:8989", "api_key": "abc123", "enabled": False,
-                },
-            },
-        })
+            }
+        )
         assert len(config["instances"]["radarr"]) == 1
         assert len(config["instances"]["sonarr"]) == 0
 
     def test_env_var_expansion(self) -> None:
         import os
         import tempfile
+
         os.environ["TEST_API_KEY"] = "secret123"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
@@ -181,22 +316,42 @@ instances:
             temp_path = f.name
         try:
             from warden.config import load_config
+
             config = load_config(temp_path)
             assert config["instances"]["radarr"][0]["api_key"] == "secret123"
         finally:
             os.unlink(temp_path)
 
+    def test_config_example_is_valid(self) -> None:
+        import os
+        from pathlib import Path
+
+        from warden.config import load_config
+
+        os.environ["SONARR_API_KEY"] = "sonarr-key"
+        os.environ["RADARR_API_KEY"] = "radarr-key"
+        os.environ["LIDARR_API_KEY"] = "lidarr-key"
+
+        config_path = Path(__file__).resolve().parents[1] / "config.example.yaml"
+        config = load_config(str(config_path))
+
+        assert len(config["instances"]["sonarr"]) == 1
+        assert len(config["instances"]["radarr"]) == 1
+        assert len(config["instances"]["lidarr"]) == 1
+
     def test_cleanup_stall_actions(self) -> None:
-        config = parse_config({
-            "killarr": {
-                "stalled": "blocklist",
-                "no_upgrade": "ignore",
-                "manual_import": "remove",
-            },
-            "instances": {
-                "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc", "enabled": True},
-            },
-        })
+        config = parse_config(
+            {
+                "killarr": {
+                    "stalled": "blocklist",
+                    "no_upgrade": "ignore",
+                    "manual_import": "remove",
+                },
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc", "enabled": True},
+                },
+            }
+        )
         assert config["cleanup_settings"]["stalled"] == "blocklist"
         assert config["cleanup_settings"]["no_upgrade"] == "ignore"
         assert config["cleanup_settings"]["manual_import"] == "remove"
@@ -229,6 +384,15 @@ class TestStallClassifier:
 
     def test_classify_dangerous_file(self) -> None:
         assert classify_stall(["potentially dangerous file extension"]) == "dangerous_file"
+
+    def test_classify_lidarr_permissions_error(self) -> None:
+        assert classify_stall(["Failed to import track, Permissions error"]) == "manual_import"
+
+    def test_classify_lidarr_track_match_failure(self) -> None:
+        assert classify_stall(["Worst track match: 0.0 % vs 60 % [track length, track title]"]) == "manual_import"
+
+    def test_classify_lidarr_similar_album_failure(self) -> None:
+        assert classify_stall(["Couldn't find similar album for [/data/decypharr/download]"]) == "manual_import"
 
 
 class TestCleanupRemoval:
@@ -274,9 +438,7 @@ class TestCleanupRemoval:
         assert delete_calls == [
             ("http://sonarr:8989/api/v3/queue/10", {"removeFromClient": "true", "blocklist": "true"}, 15)
         ]
-        assert post_calls == [
-            ("http://sonarr:8989/api/v3/command", {"name": "EpisodeSearch", "episodeIds": [20]}, 120)
-        ]
+        assert post_calls == [("http://sonarr:8989/api/v3/command", {"name": "EpisodeSearch", "episodeIds": [20]}, 120)]
 
     def test_sonarr_series_search_groups_missing_records_by_series(self) -> None:
         client = SonarrClient(
@@ -354,7 +516,9 @@ class TestCleanupRemoval:
 
         client.trigger_search([("season:55:2", "blocklist", "Show - Season 02")])
 
-        assert posts == [("http://sonarr:8989/api/v3/command", {"name": "SeasonSearch", "seriesId": 55, "seasonNumber": 2}, 120)]
+        assert posts == [
+            ("http://sonarr:8989/api/v3/command", {"name": "SeasonSearch", "seriesId": 55, "seasonNumber": 2}, 120)
+        ]
 
     def test_cleanup_search_scope_series_returns_series_id(self) -> None:
         client = SonarrClient(
@@ -377,6 +541,17 @@ class TestCleanupRemoval:
         )
 
         assert client._get_media_id({"episodeId": 20, "seriesId": 55, "seasonNumber": 2}) == 20
+
+    def test_lidarr_cleanup_falls_back_to_queue_id_without_album_id(self) -> None:
+        client = LidarrClient(
+            "lidarr",
+            "http://lidarr:8686",
+            "abc123",
+            {"stagger_interval_seconds": 0},
+            {},
+        )
+
+        assert client._get_media_id({"id": 123}) == 123
 
     def test_cleanup_search_scope_series_type_takes_precedence_over_scope(self) -> None:
         # search_type="series" always wins regardless of cleanup_search_scope
@@ -412,6 +587,36 @@ class TestCleanupRemoval:
         client._throttle_mutating_request()
 
         assert sleeps == [1.0]
+
+    def test_search_jitter_delays_before_search_command(self) -> None:
+        from warden.clients import arr as arr_module
+
+        client = SonarrClient(
+            "sonarr-tv",
+            "http://sonarr:8989",
+            "abc123",
+            {"search_jitter_seconds": 3, "stagger_interval_seconds": 0},
+            {},
+        )
+        sleeps = []
+        posts = []
+
+        class Response:
+            def raise_for_status(self) -> None:
+                return None
+
+        original_uniform = arr_module.random.uniform
+        arr_module.random.uniform = lambda start, end: 1.5
+        client._sleep_func = lambda seconds: sleeps.append(seconds)
+        client.session.post = lambda url, *, json, timeout: posts.append((url, json, timeout)) or Response()
+
+        try:
+            client.trigger_search([(20, "missing", "Example Show - S01E01")])
+        finally:
+            arr_module.random.uniform = original_uniform
+
+        assert sleeps == [1.5]
+        assert posts == [("http://sonarr:8989/api/v3/command", {"name": "EpisodeSearch", "episodeIds": [20]}, 120)]
 
     def test_cleanup_queue_fetch_respects_page_size_and_record_cap(self) -> None:
         client = SonarrClient(
@@ -544,14 +749,40 @@ class TestCleanupRemoval:
         )
         # Series 10 has one active download and one stalled — should be fully protected.
         # Series 20 has only a stalled download — should proceed to cleanup.
-        client.session.get = lambda url, *, params, timeout: type("R", (), {
-            "raise_for_status": lambda self: None,
-            "json": lambda self: {"records": [
-                {"id": 1, "seriesId": 10, "trackedDownloadStatus": "ok",      "series": {"title": "Protected Show"}, "statusMessages": []},
-                {"id": 2, "seriesId": 10, "trackedDownloadStatus": "warning", "series": {"title": "Protected Show"}, "statusMessages": [{"messages": ["the download is stalled with no seeds"]}]},
-                {"id": 3, "seriesId": 20, "trackedDownloadStatus": "warning", "series": {"title": "Unprotected Show"}, "seasonNumber": 1, "episodeId": 99, "statusMessages": [{"messages": ["the download is stalled with no seeds"]}]},
-            ]},
-        })()
+        client.session.get = lambda url, *, params, timeout: type(
+            "R",
+            (),
+            {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: {
+                    "records": [
+                        {
+                            "id": 1,
+                            "seriesId": 10,
+                            "trackedDownloadStatus": "ok",
+                            "series": {"title": "Protected Show"},
+                            "statusMessages": [],
+                        },
+                        {
+                            "id": 2,
+                            "seriesId": 10,
+                            "trackedDownloadStatus": "warning",
+                            "series": {"title": "Protected Show"},
+                            "statusMessages": [{"messages": ["the download is stalled with no seeds"]}],
+                        },
+                        {
+                            "id": 3,
+                            "seriesId": 20,
+                            "trackedDownloadStatus": "warning",
+                            "series": {"title": "Unprotected Show"},
+                            "seasonNumber": 1,
+                            "episodeId": 99,
+                            "statusMessages": [{"messages": ["the download is stalled with no seeds"]}],
+                        },
+                    ]
+                },
+            },
+        )()
         client.cleanup_settings["stalled"] = "blocklist"
 
         items, stats = client.get_stalled_items()
@@ -605,7 +836,10 @@ class TestSearchCycle:
         heavy = Client("heavy", 3)
         light = Client("light", 1)
 
-        allocated = allocate_search_slots(4, {heavy: [(1, "missing", "h1"), (2, "missing", "h2")], light: [(3, "missing", "l1"), (4, "missing", "l2")]})
+        allocated = allocate_search_slots(
+            4,
+            {heavy: [(1, "missing", "h1"), (2, "missing", "h2")], light: [(3, "missing", "l1"), (4, "missing", "l2")]},
+        )
 
         # heavy has weight=3 so gets up to 3 turns per round (exhausts its 2 items first),
         # then light fills the remaining slots
@@ -649,6 +883,34 @@ class TestSearchCycle:
 
         assert searches == [(123, "missing", "Good Movie")]
 
+    def test_search_cycle_skips_client_when_queue_size_check_times_out(self) -> None:
+        import requests
+
+        client = SonarrClient(
+            "sonarr-tv",
+            "http://sonarr:8989",
+            "abc123",
+            {"max_queue_size": 500, "stagger_interval_seconds": 0},
+            {},
+        )
+        searches = []
+
+        def get(url: str, *, params: dict, timeout: int) -> None:
+            raise requests.ReadTimeout("read timed out")
+
+        client.session.get = get
+        client.get_media_to_search = lambda missing_batch_size, upgrade_batch_size: searches.append(
+            (missing_batch_size, upgrade_batch_size)
+        ) or [(123, "missing", "Should Not Search")]
+        client.trigger_search = lambda items, *, index=None, total=None: searches.extend(items)
+
+        run_search_cycle(
+            [client],
+            {"missing_batch_size": 1, "upgrade_batch_size": 0, "stagger_interval_seconds": 0},
+        )
+
+        assert searches == []
+
 
 class TestRadarrCollection:
     def test_radarr_collection_search_falls_back_to_movie_search_when_off(self) -> None:
@@ -689,7 +951,9 @@ class TestRadarrCollection:
 
         client.trigger_search([("collection:77", "missing", "The Godfather Collection")])
 
-        assert posts == [("http://radarr:7878/api/v3/command", {"name": "CollectionSearch", "collectionIds": [77]}, 120)]
+        assert posts == [
+            ("http://radarr:7878/api/v3/command", {"name": "CollectionSearch", "collectionIds": [77]}, 120)
+        ]
 
     def test_radarr_force_collection_fetches_from_collection_endpoint(self) -> None:
         client = RadarrClient(
@@ -727,7 +991,8 @@ class TestRadarrCollection:
                     ],
                 },
             ]
-            if endpoint == "/api/v3/collection" else []
+            if endpoint == "/api/v3/collection"
+            else []
         )
 
         items = client.get_media_to_search(10, 0)
@@ -748,7 +1013,8 @@ class TestRadarrCollection:
                 {"id": 2, "collection": {"id": 99, "title": "Die Hard Collection"}, "monitored": True},
                 {"id": 3, "collection": None, "monitored": True},
             ]
-            if endpoint == "/api/v3/movie" else []
+            if endpoint == "/api/v3/movie"
+            else []
         )
         client._fetch_unlimited = lambda endpoint: (
             [
@@ -756,7 +1022,8 @@ class TestRadarrCollection:
                 {"id": 102, "movieId": 2, "title": "Die Hard 2", "isAvailable": True},
                 {"id": 103, "movieId": 3, "title": "Standalone Movie", "isAvailable": True},
             ]
-            if "missing" in endpoint else []
+            if "missing" in endpoint
+            else []
         )
 
         items = client.get_media_to_search(10, 0)
@@ -775,12 +1042,10 @@ class TestRadarrCollection:
             {},
         )
         client._fetch_list = lambda endpoint, params=None: (
-            [{"id": 5, "collection": None, "monitored": True}]
-            if endpoint == "/api/v3/movie" else []
+            [{"id": 5, "collection": None, "monitored": True}] if endpoint == "/api/v3/movie" else []
         )
         client._fetch_unlimited = lambda endpoint: (
-            [{"id": 201, "movieId": 5, "title": "Solo Film", "isAvailable": True}]
-            if "missing" in endpoint else []
+            [{"id": 201, "movieId": 5, "title": "Solo Film", "isAvailable": True}] if "missing" in endpoint else []
         )
         posts = []
 
@@ -825,18 +1090,20 @@ class TestSettingsSchema:
         assert CLEANUP_SETTINGS_SCHEMA["search_after_cleanup"]["default"] is None
 
     def test_radarr_collection_search_type_is_valid(self) -> None:
-        config = parse_config({
-            "global": {"radarr_collection_search_mode": "detect"},
-            "instances": {
-                "MyRadarr": {
-                    "type": "radarr",
-                    "host": "http://radarr:7878",
-                    "api_key": "abc123",
-                    "enabled": True,
-                    "search_type": "collection",
+        config = parse_config(
+            {
+                "global": {"radarr_collection_search_mode": "detect"},
+                "instances": {
+                    "MyRadarr": {
+                        "type": "radarr",
+                        "host": "http://radarr:7878",
+                        "api_key": "abc123",
+                        "enabled": True,
+                        "search_type": "collection",
+                    },
                 },
-            },
-        })
+            }
+        )
         assert config["instances"]["radarr"][0]["search_type"] == "collection"
 
     def test_search_schema_defaults(self) -> None:
