@@ -2,8 +2,8 @@
 
 import datetime
 import re
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Sequence
+from typing import Any, cast
 
 VALID_ACTIONS = ("ignore", "remove", "retry", "blocklist")
 VALID_ARR_TYPES = ("radarr", "sonarr", "lidarr")
@@ -127,23 +127,24 @@ def _validate_setting(
     setting: str,
     value: Any,
     expected_type: type,
-    choices: tuple | None = None,
+    choices: Sequence[Any] | None = None,
     allow_special_values: bool = False,
     min_value: int | None = None,
     prefix: str = "global",
     element_type: type | None = None,
-    validator: Callable | None = None,
+    validator: Callable[[Any], None] | None = None,
 ) -> None:
     """Validate a single setting value against its schema definition."""
     if not isinstance(value, expected_type):
         raise ValueError(f"'{prefix}.{setting}' must be of type {expected_type.__name__}.")
 
     if expected_type is int:
-        if min_value is not None and value < min_value:
+        int_value = cast(int, value)
+        if min_value is not None and int_value < min_value:
             raise ValueError(f"'{prefix}.{setting}' must be at least {min_value}.")
         if min_value is None:
             limit = -1 if allow_special_values else 0
-            if value < limit:
+            if int_value < limit:
                 msg = (
                     f"'{prefix}.{setting}' must be 0 (disabled), -1 (unlimited), or a positive integer."
                     if allow_special_values
@@ -152,7 +153,8 @@ def _validate_setting(
                 raise ValueError(msg)
 
     if expected_type is list and element_type is not None:
-        for element in value:
+        list_value = cast(list[Any], value)
+        for element in list_value:
             if not isinstance(element, element_type):
                 raise ValueError(f"'{prefix}.{setting}' must be a list of {element_type.__name__} values.")
             if element_type is str and not element:

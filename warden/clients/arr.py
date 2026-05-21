@@ -7,7 +7,7 @@ import logging
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 
 import requests
 
@@ -16,6 +16,8 @@ from warden.validators import classify_stall
 logger = logging.getLogger(__name__)
 
 MediaItem = tuple[int | str, str, str]
+Record = dict[str, Any]
+RequestParams = dict[str, str | int | list[int]]
 SeasonPackThreshold = bool | int | float
 
 
@@ -65,8 +67,8 @@ class ArrClient(ABC):
         name: str,
         url: str,
         api_key: str,
-        search_settings: dict,
-        cleanup_settings: dict,
+        search_settings: dict[str, Any],
+        cleanup_settings: dict[str, Any],
         weight: float = 1.0,
         circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
@@ -131,43 +133,43 @@ class ArrClient(ABC):
     def _id_field(self) -> str: ...
 
     @abstractmethod
-    def _get_record_title(self, record: dict) -> str: ...
+    def _get_record_title(self, record: Record) -> str: ...
 
     @abstractmethod
-    def _get_record_tags(self, record: dict) -> list[int]: ...
+    def _get_record_tags(self, record: Record) -> list[int]: ...
 
     @abstractmethod
-    def _get_release_date(self, record: dict) -> str: ...
+    def _get_release_date(self, record: Record) -> str: ...
 
     @abstractmethod
-    def _is_available(self, record: dict) -> bool: ...
+    def _is_available(self, record: Record) -> bool: ...
 
     @abstractmethod
-    def _get_media_id(self, record: dict) -> int | str: ...
+    def _get_media_id(self, record: Record) -> int | str: ...
 
     # ----- common HTTP utilities -----
 
-    def _fetch_list(self, endpoint: str, params: dict | None = None) -> list[dict]:
+    def _fetch_list(self, endpoint: str, params: RequestParams | None = None) -> list[Record]:
         url = f"{self.url}{endpoint}"
         try:
             response = self.session.get(url, params=params or {}, timeout=self.fetch_timeout)
             response.raise_for_status()
-            return response.json()
+            return cast(list[Record], response.json())
         except requests.RequestException as error:
             logger.error(f"[{self.name}] Failed to fetch {endpoint}: {error}")
             return []
 
-    def _fetch_unlimited(self, endpoint: str) -> list[dict]:
+    def _fetch_unlimited(self, endpoint: str) -> list[Record]:
         url = f"{self.url}{endpoint}"
-        result = []
+        result: list[Record] = []
         current_page = 1
         page_size = self.fetch_page_size
         while True:
-            params = {**self._extra_fetch_params(), "page": current_page, "pageSize": page_size}
+            params: RequestParams = {**self._extra_fetch_params(), "page": current_page, "pageSize": page_size}
             try:
                 response = self.session.get(url, params=params, timeout=self.fetch_timeout)
                 response.raise_for_status()
-                records = response.json().get("records", [])
+                records = cast(list[Record], response.json().get("records", []))
                 result.extend(records)
                 if len(records) < page_size:
                     break
@@ -238,7 +240,7 @@ class ArrClient(ABC):
                 result.add(tag_id)
         return result
 
-    def _is_tag_filtered_out(self, record: dict) -> bool:
+    def _is_tag_filtered_out(self, record: Record) -> bool:
         record_tag_ids = set(self._get_record_tags(record))
         return bool(
             (self._exclude_tag_ids and record_tag_ids & self._exclude_tag_ids)
@@ -253,7 +255,7 @@ class ArrClient(ABC):
             return date_str <= now
         return False
 
-    def _is_within_retry_window(self, record: dict, reason: str) -> bool:
+    def _is_within_retry_window(self, record: Record, reason: str) -> bool:
         last_search = record.get("lastSearchTime")
         interval = self.retry_interval_days
         if reason == "missing" and self.retry_interval_days_missing is not None:
@@ -283,7 +285,7 @@ class ArrClient(ABC):
 
     # ----- sorting -----
 
-    def _sort_records_client_side(self, records: list[dict]) -> None:
+    def _sort_records_client_side(self, records: list[Record]) -> None:
         sort_keys = {
             "alphabetical": self._get_record_title,
             "last_added": lambda rec: rec.get("dateAdded") or "",
@@ -297,12 +299,12 @@ class ArrClient(ABC):
 
     # ----- search pipeline -----
 
-    def _extract_item(self, record: dict, reason: str) -> MediaItem:
+    def _extract_item(self, record: Record, reason: str) -> MediaItem:
         return (record["id"], reason, self._get_record_title(record))
 
     def _process_record(
         self,
-        record: dict,
+        record: Record,
         reason: str,
         seen: set[int],
         check_availability: bool = False,
@@ -369,10 +371,10 @@ class ArrClient(ABC):
         profiles = self._fetch_list(self.ENDPOINT_QUALITY_PROFILE)
         return {p["id"]: p["cutoffFormatScore"] for p in profiles if p.get("cutoffFormatScore", 0) > 0}
 
-    def _get_custom_format_upgrade_records(self, _profile_cutoffs: dict[int, int]) -> list[dict]:
+    def _get_custom_format_upgrade_records(self, _profile_cutoffs: dict[int, int]) -> list[Record]:
         return []
 
-    def _get_custom_format_score_unmet_records(self) -> list[dict]:
+    def _get_custom_format_score_unmet_records(self) -> list[Record]:
         profile_cutoffs = self._fetch_quality_profile_cutoffs()
         if not profile_cutoffs:
             return []
@@ -447,10 +449,10 @@ class ArrClient(ABC):
             return True
         try:
             url = f"{self.url}{self.ENDPOINT_QUEUE}"
-            params = {"page": 1, "pageSize": 1, "includeUnknownSeriesItems": "false"}
+            params: RequestParams = {"page": 1, "pageSize": 1, "includeUnknownSeriesItems": "false"}
             response = self.session.get(url, params=params, timeout=self.fetch_timeout)
             response.raise_for_status()
-            total = response.json().get("totalRecords", 0)
+            total = cast(int, response.json().get("totalRecords", 0))
             if total >= self.max_queue_size:
                 logger.info(f"[{self.name}] Queue size ({total}) >= max ({self.max_queue_size}) — pausing searches.")
                 return False
@@ -462,8 +464,8 @@ class ArrClient(ABC):
     def is_queue_too_large(self) -> bool:
         return not self._check_queue_size()
 
-    def _fetch_all_queue(self) -> list[dict]:
-        result: list[dict] = []
+    def _fetch_all_queue(self) -> list[Record]:
+        result: list[Record] = []
         current_page = 1
         page_size = self.cleanup_page_size
         record_cap = self.max_cleanup_queue_records
@@ -489,7 +491,7 @@ class ArrClient(ABC):
                 break
         return result
 
-    def _is_stalled(self, record: dict) -> bool:
+    def _is_stalled(self, record: Record) -> bool:
         return record.get("trackedDownloadStatus") == "warning"
 
     def _resolve_cleanup_action(self, category: str) -> str:
@@ -498,7 +500,7 @@ class ArrClient(ABC):
             action = self.cleanup_settings.get("stalled")
         return action or "ignore"
 
-    def _get_skip_series_ids(self, all_records: list[dict]) -> set[int]:
+    def _get_skip_series_ids(self, all_records: list[Record]) -> set[int]:
         """Return series IDs whose stalled items should be protected this cycle.
 
         Default returns an empty set — subclasses override to implement series-aware protection.
@@ -630,7 +632,7 @@ class LidarrClient(ArrClient):
     ENDPOINT_WANTED_MISSING = "/api/v1/wanted/missing"
     ARTIST_ID_PREFIX = "artist:"
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.search_type = self.search_settings.get("search_type") or "album"
 
@@ -642,22 +644,22 @@ class LidarrClient(ArrClient):
     def _id_field(self) -> str:
         return "albumIds"
 
-    def _get_record_title(self, record: dict) -> str:
+    def _get_record_title(self, record: Record) -> str:
         artist_name = record.get("artist", {}).get("artistName", "Unknown Artist")
         album_title = record.get("title", "Unknown Album")
         return f"{artist_name} - {album_title}"
 
-    def _get_record_tags(self, record: dict) -> list[int]:
-        return record.get("artist", {}).get("tags", []) or record.get("tags", [])
+    def _get_record_tags(self, record: Record) -> list[int]:
+        return cast(list[int], record.get("artist", {}).get("tags", []) or record.get("tags", []))
 
-    def _get_release_date(self, record: dict) -> str:
+    def _get_release_date(self, record: Record) -> str:
         return record.get("releaseDate") or ""
 
-    def _is_available(self, record: dict) -> bool:
+    def _is_available(self, record: Record) -> bool:
         return self._is_date_past(record.get("releaseDate"))
 
-    def _get_media_id(self, record: dict) -> int:
-        return record.get("albumId") or record["id"]
+    def _get_media_id(self, record: Record) -> int:
+        return cast(int, record.get("albumId") or record["id"])
 
     def _fetch_quality_profile_cutoffs(self) -> dict[int, int]:
         return {}
@@ -750,7 +752,7 @@ class RadarrClient(ArrClient):
     COLLECTION_ID_PREFIX = "collection:"
     MOVIE_FILE_BATCH_SIZE = 100
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.search_type = self.search_settings.get("search_type") or "movie"
         self.collection_search_mode = self.search_settings.get("radarr_collection_search_mode", "off")
@@ -784,20 +786,20 @@ class RadarrClient(ArrClient):
             return
         super()._trigger_single(item_id, reason, title, index, total)
 
-    def _get_record_title(self, record: dict) -> str:
-        return record.get("title", f"Movie {record.get('id', 'Unknown')}")
+    def _get_record_title(self, record: Record) -> str:
+        return cast(str, record.get("title", f"Movie {record.get('id', 'Unknown')}"))
 
-    def _get_record_tags(self, record: dict) -> list[int]:
-        return record.get("tags", [])
+    def _get_record_tags(self, record: Record) -> list[int]:
+        return cast(list[int], record.get("tags", []))
 
-    def _get_release_date(self, record: dict) -> str:
+    def _get_release_date(self, record: Record) -> str:
         return record.get("releaseDate") or ""
 
-    def _is_available(self, record: dict) -> bool:
-        return record.get("isAvailable", True)
+    def _is_available(self, record: Record) -> bool:
+        return cast(bool, record.get("isAvailable", True))
 
-    def _get_media_id(self, record: dict) -> int:
-        return record["movieId"]
+    def _get_media_id(self, record: Record) -> int:
+        return cast(int, record["movieId"])
 
     def _fetch_movie_collection_map(self) -> dict[int, tuple[int, str]]:
         """Return {movie_id: (collection_id, collection_title)} for all movies in a collection."""
@@ -969,9 +971,9 @@ class RadarrClient(ArrClient):
                 scores[mfile["id"]] = score if score is not None else 0
         return scores
 
-    def _get_custom_format_upgrade_records(self, profile_cutoffs: dict[int, int]) -> list[dict]:
+    def _get_custom_format_upgrade_records(self, profile_cutoffs: dict[int, int]) -> list[Record]:
         movies = self._fetch_list(self.ENDPOINT_MOVIE)
-        candidates: dict[int, tuple[dict, int]] = {}
+        candidates: dict[int, tuple[Record, int]] = {}
         for movie in movies:
             if not movie.get("monitored", False):
                 continue
@@ -979,7 +981,7 @@ class RadarrClient(ArrClient):
             file_id = movie.get("movieFileId")
             if cutoff_score > 0 and file_id:
                 candidates[file_id] = (movie, cutoff_score)
-        result: list[dict] = []
+        result: list[Record] = []
         if candidates:
             scores = self._fetch_movie_file_scores(list(candidates.keys()))
             result = [
@@ -995,14 +997,14 @@ class SonarrClient(ArrClient):
     SEASON_ID_PREFIX = "season:"
     SERIES_ID_PREFIX = "series:"
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.search_type = self.search_settings.get("search_type") or "episode"
         self.season_packs: SeasonPackThreshold = self.search_settings.get("season_packs", False)
         self.protect_downloading_series: bool = self.cleanup_settings.get("protect_downloading_series", False)
         self.cleanup_search_scope: str = self.cleanup_settings.get("cleanup_search_scope", "episode")
 
-    def _get_skip_series_ids(self, all_records: list[dict]) -> set[int]:
+    def _get_skip_series_ids(self, all_records: list[Record]) -> set[int]:
         """Return series IDs that have at least one non-stalled download still in progress.
 
         When `protect_downloading_series` is enabled, stalled items from these series are held
@@ -1028,23 +1030,23 @@ class SonarrClient(ArrClient):
     def _id_field(self) -> str:
         return "episodeIds"
 
-    def _get_record_title(self, record: dict) -> str:
+    def _get_record_title(self, record: Record) -> str:
         series_title = record.get("series", {}).get("title", "Unknown Series")
         season = record.get("seasonNumber", 0)
         episode = record.get("episodeNumber", 0)
         episode_title = record.get("title", "Unknown Episode")
         return f"{series_title} - S{season:02d}E{episode:02d} - {episode_title}"
 
-    def _get_record_tags(self, record: dict) -> list[int]:
-        return record.get("series", {}).get("tags", [])
+    def _get_record_tags(self, record: Record) -> list[int]:
+        return cast(list[int], record.get("series", {}).get("tags", []))
 
-    def _get_release_date(self, record: dict) -> str:
+    def _get_release_date(self, record: Record) -> str:
         return record.get("airDateUtc") or ""
 
-    def _is_available(self, record: dict) -> bool:
+    def _is_available(self, record: Record) -> bool:
         return self._is_date_past(record.get("airDateUtc"))
 
-    def _get_media_id(self, record: dict) -> int | str:
+    def _get_media_id(self, record: Record) -> int | str:
         series_id = record.get("seriesId") or record.get("series", {}).get("id")
         if self.search_type == "series":
             if series_id is not None:
@@ -1055,20 +1057,20 @@ class SonarrClient(ArrClient):
             season_number = record.get("seasonNumber")
             if season_number is not None:
                 return f"{self.SEASON_ID_PREFIX}{series_id}:{season_number}"
-        return record["episodeId"]
+        return cast(int | str, record["episodeId"])
 
     def _extra_fetch_params(self) -> dict[str, str]:
         return {"includeSeries": "true", "monitored": "true"}
 
-    def _get_series_id(self, record: dict) -> int | None:
-        return record.get("series", {}).get("id")
+    def _get_series_id(self, record: Record) -> int | None:
+        return cast(int | None, record.get("series", {}).get("id"))
 
-    def _get_season_number(self, record: dict) -> int | None:
+    def _get_season_number(self, record: Record) -> int | None:
         return record.get("seasonNumber")
 
-    def _fetch_season_metadata(self) -> dict[tuple[int, int], dict]:
+    def _fetch_season_metadata(self) -> dict[tuple[int, int], Record]:
         series_list = self._fetch_list(self.ENDPOINT_SERIES)
-        result: dict[tuple[int, int], dict] = {}
+        result: dict[tuple[int, int], Record] = {}
         for series in series_list:
             series_id = series.get("id")
             for season in series.get("seasons", []):
@@ -1086,7 +1088,7 @@ class SonarrClient(ArrClient):
         self,
         series_id: int,
         season_number: int,
-        season_metadata: dict[tuple[int, int], dict],
+        season_metadata: dict[tuple[int, int], Record],
     ) -> bool:
         next_airing = season_metadata.get((series_id, season_number), {}).get("next_airing")
         return bool(next_airing and not self._is_date_past(next_airing))
@@ -1096,7 +1098,7 @@ class SonarrClient(ArrClient):
         series_id: int,
         season_number: int,
         season_record_counts: dict[tuple[int, int], int],
-        season_metadata: dict[tuple[int, int], dict],
+        season_metadata: dict[tuple[int, int], Record],
     ) -> bool:
         key = (series_id, season_number)
         rec_count = season_record_counts.get(key, 0)
@@ -1104,10 +1106,10 @@ class SonarrClient(ArrClient):
             return self.season_packs
         if isinstance(self.season_packs, int):
             return rec_count >= self.season_packs
-        monitored = season_metadata.get(key, {}).get("monitored_count", 0)
+        monitored = cast(int, season_metadata.get(key, {}).get("monitored_count", 0))
         return monitored > 0 and (rec_count / monitored) >= self.season_packs
 
-    def _tally_season_records(self, records: list[dict]) -> dict[tuple[int, int], int]:
+    def _tally_season_records(self, records: list[Record]) -> dict[tuple[int, int], int]:
         counts: dict[tuple[int, int], int] = {}
         for record in records:
             series_id = self._get_series_id(record)
@@ -1118,18 +1120,18 @@ class SonarrClient(ArrClient):
             counts[key] = counts.get(key, 0) + 1
         return counts
 
-    def _get_season_title(self, record: dict, season_number: int) -> str:
+    def _get_season_title(self, record: Record, season_number: int) -> str:
         series_title = record.get("series", {}).get("title", "Unknown Series")
         return f"{series_title} - Season {season_number:02d}"
 
     def _collect_season_pack_records(
         self,
-        records: list[dict],
+        records: list[Record],
         batch_size: int,
         reason: str,
         seen_seasons: set[tuple[int, int]],
         check_availability: bool,
-        season_metadata: dict[tuple[int, int], dict],
+        season_metadata: dict[tuple[int, int], Record],
         season_record_counts: dict[tuple[int, int], int],
     ) -> list[MediaItem]:
         items: list[MediaItem] = []
@@ -1348,7 +1350,7 @@ class SonarrClient(ArrClient):
         episode_files = self._fetch_list(self.ENDPOINT_EPISODE_FILE, {"seriesId": series_id})
         return {ef["id"] for ef in episode_files if ef.get("customFormatScore", 0) < cutoff_score}
 
-    def _get_custom_format_upgrade_records(self, profile_cutoffs: dict[int, int]) -> list[dict]:
+    def _get_custom_format_upgrade_records(self, profile_cutoffs: dict[int, int]) -> list[Record]:
         series_list = self._fetch_list(self.ENDPOINT_SERIES)
         result = []
         for series in series_list:

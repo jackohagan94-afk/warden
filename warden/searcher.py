@@ -4,7 +4,7 @@ import datetime
 import logging
 import math
 import time
-from typing import Any
+from typing import Any, cast
 
 from warden.clients.arr import ArrClient
 from warden.config import get_setting_default, parse_active_hours
@@ -28,7 +28,7 @@ _SEARCH_ORDER_LABELS: dict[str, str] = {
 _MIN_SLEEP_SECONDS: float = 1.0
 
 
-def _get_setting(settings: dict, key: str) -> Any:
+def _get_setting(settings: dict[str, Any], key: str) -> Any:
     return settings.get(key, get_setting_default(key))
 
 
@@ -183,13 +183,13 @@ def _format_cycle_complete_log(
     )
 
 
-def _resolve_interval_secs(settings: dict, specific_key: str) -> float:
+def _resolve_interval_secs(settings: dict[str, Any], specific_key: str) -> float:
     override = _get_setting(settings, specific_key)
     resolved_minutes = override if override is not None else _get_setting(settings, "run_interval_minutes")
-    return resolved_minutes * 60
+    return cast(int, resolved_minutes) * 60
 
 
-def _log_searcher_start(active_clients: list[ArrClient], settings: dict) -> None:
+def _log_searcher_start(active_clients: list[ArrClient], settings: dict[str, Any]) -> None:
     global_missing = _get_setting(settings, "missing_batch_size")
     global_upgrade = _get_setting(settings, "upgrade_batch_size")
     stagger_seconds = _get_setting(settings, "stagger_interval_seconds")
@@ -232,7 +232,7 @@ def _log_searcher_start(active_clients: list[ArrClient], settings: dict) -> None
 
 def run_search_cycle(
     active_clients: list[ArrClient],
-    settings: dict,
+    settings: dict[str, Any],
     *,
     run_missing: bool = True,
     run_upgrade: bool = True,
@@ -294,7 +294,7 @@ def run_search_cycle(
     )
 
 
-def run_searcher_loop(active_clients: list[ArrClient], settings: dict) -> None:
+def run_searcher_loop(active_clients: list[ArrClient], settings: dict[str, Any]) -> None:
     _log_searcher_start(active_clients, settings)
 
     missing_interval_secs = _resolve_interval_secs(settings, "run_interval_minutes_missing")
@@ -308,42 +308,42 @@ def run_searcher_loop(active_clients: list[ArrClient], settings: dict) -> None:
     while True:
         if parsed_window:
             start_time, end_time = parsed_window
-            now = datetime.datetime.now().time()
-            if not _is_within_active_hours(start_time, end_time, now):
-                secs = _seconds_until_window_open(start_time, now)
+            current_time = datetime.datetime.now().time()
+            if not _is_within_active_hours(start_time, end_time, current_time):
+                secs = _seconds_until_window_open(start_time, current_time)
                 logger.info(f"Outside active hours ({active_hours}). Sleeping {secs}s until window opens.")
                 time.sleep(secs)
                 continue
 
-        now = time.monotonic()
-        run_missing = (now - last_missing_run) >= missing_interval_secs
-        run_upgrade = (now - last_upgrade_run) >= upgrade_interval_secs
+        monotonic_now = time.monotonic()
+        run_missing = (monotonic_now - last_missing_run) >= missing_interval_secs
+        run_upgrade = (monotonic_now - last_upgrade_run) >= upgrade_interval_secs
 
         if run_missing:
-            last_missing_run = now
+            last_missing_run = monotonic_now
         if run_upgrade:
-            last_upgrade_run = now
+            last_upgrade_run = monotonic_now
 
         try:
             run_search_cycle(active_clients, settings, run_missing=run_missing, run_upgrade=run_upgrade)
         except Exception:
             logger.exception("Search cycle failed unexpectedly; continuing after sleep.")
 
-        now = time.monotonic()
+        monotonic_now = time.monotonic()
         logger.info(
             _format_cycle_complete_log(
                 run_missing,
                 run_upgrade,
-                missing_interval_secs - (now - last_missing_run),
-                upgrade_interval_secs - (now - last_upgrade_run),
+                missing_interval_secs - (monotonic_now - last_missing_run),
+                upgrade_interval_secs - (monotonic_now - last_upgrade_run),
             )
         )
         time.sleep(
             max(
                 _MIN_SLEEP_SECONDS,
                 min(
-                    missing_interval_secs - (now - last_missing_run),
-                    upgrade_interval_secs - (now - last_upgrade_run),
+                    missing_interval_secs - (monotonic_now - last_missing_run),
+                    upgrade_interval_secs - (monotonic_now - last_upgrade_run),
                 ),
             )
         )

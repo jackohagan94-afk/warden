@@ -4,7 +4,8 @@ import datetime
 import logging
 import os
 import re
-from typing import Any
+from collections.abc import Callable, Sequence
+from typing import Any, NotRequired, TypedDict, cast
 
 import yaml
 
@@ -25,7 +26,23 @@ logger = logging.getLogger(__name__)
 
 REQUIRED_TOP_LEVEL = ("instances",)
 
-SEARCH_SETTINGS_SCHEMA = {
+
+class SettingSchema(TypedDict):
+    default: Any
+    type: NotRequired[type]
+    choices: NotRequired[Sequence[Any]]
+    allow_special_values: NotRequired[bool]
+    min_value: NotRequired[int]
+    element_type: NotRequired[type]
+    validator: NotRequired[Callable[[Any], None]]
+    custom_validator: NotRequired[Callable[[str, Any], None]]
+
+
+ConfigMap = dict[str, Any]
+SchemaMap = dict[str, SettingSchema]
+
+
+SEARCH_SETTINGS_SCHEMA: SchemaMap = {
     "active_hours": {"default": "", "type": str, "validator": _validate_active_hours},
     "api_request_interval_seconds": {"default": 0, "type": int, "min_value": 0},
     "circuit_breaker_threshold": {"default": 0, "type": int, "min_value": 0},
@@ -55,7 +72,7 @@ SEARCH_SETTINGS_SCHEMA = {
     "upgrade_batch_size": {"default": 10, "type": int, "allow_special_values": True},
 }
 
-CLEANUP_SETTINGS_SCHEMA = {
+CLEANUP_SETTINGS_SCHEMA: SchemaMap = {
     "active_hours": {"default": "", "type": str, "validator": _validate_active_hours},
     "batch_size": {"default": 10, "type": int, "allow_special_values": True},
     "circuit_breaker_threshold": {"default": 0, "type": int, "min_value": 0},
@@ -78,7 +95,7 @@ CLEANUP_SETTINGS_SCHEMA = {
 }
 
 
-def _apply_interval_conversions(settings: dict) -> None:
+def _apply_interval_conversions(settings: ConfigMap) -> None:
     if "interval" in settings and "run_interval_minutes" not in settings:
         if not isinstance(settings["interval"], int):
             raise ValueError("'global.interval' must be an integer.")
@@ -99,7 +116,7 @@ def _apply_interval_conversions(settings: dict) -> None:
         settings["run_interval_minutes_upgrade"] = settings["interval_upgrade"] // 60
 
 
-def _expand_env_var(match: re.Match) -> str:
+def _expand_env_var(match: re.Match[str]) -> str:
     name = match.group(1)
     val = os.environ.get(name)
     if val is None:
@@ -131,7 +148,7 @@ def _parse_env_value(value: str) -> Any:
     return value
 
 
-def _parse_instance(name: str, config: dict) -> tuple[str, dict] | None:
+def _parse_instance(name: str, config: ConfigMap) -> tuple[str, ConfigMap] | None:
     instance = config.copy()
     if "host" in instance:
         instance["url"] = instance.pop("host")
@@ -168,7 +185,7 @@ def _validate_action_list(setting: str, value: list[str], prefix: str) -> None:
             raise ValueError(f"'{prefix}.{setting}' entries must be one of: {valid_actions}.")
 
 
-def _validate_schema_setting(setting: str, value: Any, definition: dict, prefix: str) -> None:
+def _validate_schema_setting(setting: str, value: Any, definition: SettingSchema, prefix: str) -> None:
     if definition["default"] is None and value is None:
         return
     if "custom_validator" in definition:
@@ -189,27 +206,27 @@ def _validate_schema_setting(setting: str, value: Any, definition: dict, prefix:
         _validate_action_list(setting, value, prefix)
 
 
-def _validate_search_settings(settings: dict, schema: dict) -> None:
+def _validate_search_settings(settings: ConfigMap, schema: SchemaMap) -> None:
     for setting, definition in schema.items():
         default = definition["default"]
         settings.setdefault(setting, list(default) if isinstance(default, list) else default)
         _validate_schema_setting(setting, settings[setting], definition, "global")
 
 
-def _validate_cleanup_settings(settings: dict, schema: dict) -> None:
+def _validate_cleanup_settings(settings: ConfigMap, schema: SchemaMap) -> None:
     for setting, definition in schema.items():
         default = definition["default"]
         settings.setdefault(setting, list(default) if isinstance(default, list) else default)
         _validate_schema_setting(setting, settings[setting], definition, "killarr")
 
 
-def _validate_stall_actions(settings: dict) -> None:
+def _validate_stall_actions(settings: ConfigMap) -> None:
     for category in STALL_CATEGORIES:
         if category in settings:
             _validate_setting(category, settings[category], str, choices=VALID_ACTIONS)
 
 
-def _validate_instance_overrides(name: str, instance: dict) -> None:
+def _validate_instance_overrides(name: str, instance: ConfigMap) -> None:
     seen: set[str] = set()
     for schema in (SEARCH_SETTINGS_SCHEMA, CLEANUP_SETTINGS_SCHEMA):
         for setting, definition in schema.items():
@@ -228,13 +245,13 @@ def get_setting_default(setting: str) -> Any:
     raise KeyError(f"Unknown setting: {setting}")
 
 
-def load_config(path: str) -> dict:
+def load_config(path: str) -> ConfigMap:
     with open(path, encoding="utf-8") as file:
         config = yaml.safe_load(file)
     if config is None:
         config = {}
-    config = _expand_env_vars(config)
-    return parse_config(config)
+    expanded = _expand_env_vars(config)
+    return parse_config(expanded)
 
 
 def parse_active_hours(value: str) -> tuple[datetime.time, datetime.time]:
@@ -242,7 +259,7 @@ def parse_active_hours(value: str) -> tuple[datetime.time, datetime.time]:
     return _parse_hhmm(start_str), _parse_hhmm(end_str)
 
 
-def parse_config(config: dict) -> dict:
+def parse_config(config: ConfigMap) -> ConfigMap:
     if not isinstance(config, dict):
         raise ValueError("Configuration file must be a YAML mapping at the top level.")
 
@@ -250,13 +267,13 @@ def parse_config(config: dict) -> dict:
         if key not in config:
             raise ValueError(f"Missing required top-level key: '{key}'")
 
-    search_settings = dict(config.get("global", {}))
+    search_settings = cast(ConfigMap, dict(config.get("global", {})))
     if not isinstance(search_settings, dict):
         raise ValueError("'global' must be a YAML mapping.")
     _apply_interval_conversions(search_settings)
     _validate_search_settings(search_settings, SEARCH_SETTINGS_SCHEMA)
 
-    cleanup_settings = dict(config.get("killarr", {}))
+    cleanup_settings = cast(ConfigMap, dict(config.get("killarr", {})))
     if not isinstance(cleanup_settings, dict):
         raise ValueError("'killarr' must be a YAML mapping.")
     _validate_cleanup_settings(cleanup_settings, CLEANUP_SETTINGS_SCHEMA)
@@ -266,7 +283,7 @@ def parse_config(config: dict) -> dict:
     if not isinstance(raw_instances, dict):
         raise ValueError("'instances' must be a YAML mapping.")
 
-    final_instances: dict[str, list] = {"radarr": [], "sonarr": [], "lidarr": []}
+    final_instances: dict[str, list[ConfigMap]] = {"radarr": [], "sonarr": [], "lidarr": []}
     all_empty = True
 
     for instance_name, instance_config in raw_instances.items():

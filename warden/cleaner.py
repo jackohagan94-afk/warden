@@ -10,8 +10,11 @@ from warden.validators import STALL_CATEGORIES
 
 logger = logging.getLogger(__name__)
 
+CleanupBacklogs = dict[Any, list[Any]]
+CleanupQueue = list[tuple[Any, Any]]
 
-def _get_setting(settings: dict, key: str) -> Any:
+
+def _get_setting(settings: dict[str, Any], key: str) -> Any:
     return settings.get(key, get_setting_default(key))
 
 
@@ -45,10 +48,10 @@ def _format_cycle_info(client_name: str, item_count: int, skip_stats: dict[str, 
     return f"[{client_name}] Found {item_count} items to remove (Evaluated: {total_eval}, Skipped: {skipped}{protected_str})."
 
 
-def _allocate_slots(limit: int, client_backlogs: dict) -> list[tuple]:
+def _allocate_slots(limit: int, client_backlogs: CleanupBacklogs) -> CleanupQueue:
     if limit == 0 or not client_backlogs:
         return []
-    winners: list[tuple] = []
+    winners: CleanupQueue = []
     pools = {client: list(items) for client, items in client_backlogs.items() if items}
     sorted_clients = sorted(
         pools.keys(),
@@ -72,14 +75,14 @@ def _allocate_slots(limit: int, client_backlogs: dict) -> list[tuple]:
     return winners
 
 
-def _apply_removal_order(client_backlogs: dict, removal_order: str) -> None:
+def _apply_removal_order(client_backlogs: CleanupBacklogs, removal_order: str) -> None:
     if removal_order != "api_order":
         reverse = removal_order == "age_descending"
         for items in client_backlogs.values():
             items.sort(key=lambda item: item.added or "9999", reverse=reverse)
 
 
-def _log_cleaner_start(active_clients: list[Any], settings: dict) -> None:
+def _log_cleaner_start(active_clients: list[Any], settings: dict[str, Any]) -> None:
     batch = _get_setting(settings, "batch_size")
     batch_str = {0: "Disabled", -1: "Unlimited"}.get(batch, str(batch))
     stagger = _get_setting(settings, "stagger_interval_seconds")
@@ -109,7 +112,7 @@ def _log_cleaner_start(active_clients: list[Any], settings: dict) -> None:
     )
 
 
-def run_removal_cycle(active_clients: list[Any], settings: dict) -> None:
+def run_removal_cycle(active_clients: list[Any], settings: dict[str, Any]) -> None:
     logger.info("--- Starting removal cycle ---")
     batch_size: int = _get_setting(settings, "batch_size")
     max_per_instance: int = _get_setting(settings, "max_removals_per_instance")
@@ -117,7 +120,7 @@ def run_removal_cycle(active_clients: list[Any], settings: dict) -> None:
     removal_order: str = _get_setting(settings, "removal_order")
     stagger: int = _get_setting(settings, "stagger_interval_seconds")
 
-    backlogs: dict = {}
+    backlogs: CleanupBacklogs = {}
     for client in active_clients:
         items, skip_stats = client.get_stalled_items()
         if not items:
@@ -136,7 +139,7 @@ def run_removal_cycle(active_clients: list[Any], settings: dict) -> None:
     queue = _allocate_slots(batch_size, backlogs)
 
     if not interleave:
-        per_client: dict = {}
+        per_client: CleanupBacklogs = {}
         for client, item in queue:
             per_client.setdefault(client, []).append(item)
         queue = [(c, item) for c in active_clients for item in per_client.get(c, [])]
@@ -162,7 +165,7 @@ def run_removal_cycle(active_clients: list[Any], settings: dict) -> None:
     logger.info(f"Cleanup cycle summary: attempted={removed_attempts}, failed={failed}, duration={duration:.2f}s.")
 
 
-def run_cleaner_loop(active_clients: list[Any], settings: dict) -> None:
+def run_cleaner_loop(active_clients: list[Any], settings: dict[str, Any]) -> None:
     _log_cleaner_start(active_clients, settings)
 
     run_interval_seconds = _get_setting(settings, "interval")

@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any, cast
 
 from warden.cleaner import run_cleaner_loop
 from warden.clients.arr import _CLIENT_MAP, ArrClient, CircuitBreaker
@@ -49,7 +50,10 @@ _MODE_MAP = {
 }
 
 
-def _load_config_from_paths(config_paths: list[str]) -> dict | None:
+ConfigMap = dict[str, Any]
+
+
+def _load_config_from_paths(config_paths: list[str]) -> ConfigMap | None:
     config = None
     error_message = None
     for config_path in config_paths:
@@ -73,9 +77,9 @@ def _load_config_from_paths(config_paths: list[str]) -> dict | None:
 
 
 def build_arr_clients(
-    instances_config: dict,
-    search_settings: dict,
-    cleanup_settings: dict,
+    instances_config: dict[str, list[ConfigMap]],
+    search_settings: ConfigMap,
+    cleanup_settings: ConfigMap,
     circuit_breaker: CircuitBreaker,
     client_registry: dict[str, type[ArrClient]] | None = None,
 ) -> list[ArrClient]:
@@ -133,9 +137,9 @@ def run() -> None:
     if not config:
         sys.exit(1)
 
-    search_settings = config.get("search_settings", {})
-    cleanup_settings = config.get("cleanup_settings", {})
-    instances = config.get("instances", {})
+    search_settings = cast(ConfigMap, config.get("search_settings", {}))
+    cleanup_settings = cast(ConfigMap, config.get("cleanup_settings", {}))
+    instances = cast(dict[str, list[ConfigMap]], config.get("instances", {}))
 
     circuit_breaker = CircuitBreaker(
         max(
