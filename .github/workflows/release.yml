@@ -124,6 +124,7 @@ jobs:
           fi
           echo "changes<<EOF" >> "$GITHUB_OUTPUT"
           git log $RANGE --pretty=format:"- %s (%h)" >> "$GITHUB_OUTPUT"
+          printf '\n' >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
       - name: Create release
         uses: softprops/action-gh-release@v2
