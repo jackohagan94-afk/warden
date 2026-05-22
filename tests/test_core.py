@@ -899,9 +899,9 @@ class TestSearchCycle:
             raise requests.ReadTimeout("read timed out")
 
         client.session.get = get
-        client.get_media_to_search = lambda missing_batch_size, upgrade_batch_size: searches.append(
-            (missing_batch_size, upgrade_batch_size)
-        ) or [(123, "missing", "Should Not Search")]
+        client.get_media_to_search = lambda missing_batch_size, upgrade_batch_size: (
+            searches.append((missing_batch_size, upgrade_batch_size)) or [(123, "missing", "Should Not Search")]
+        )
         client.trigger_search = lambda items, *, index=None, total=None: searches.extend(items)
 
         run_search_cycle(
