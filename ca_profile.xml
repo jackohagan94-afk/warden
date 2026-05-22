@@ -1,0 +1,8 @@
+<CommunityApplications>
+  <Profile>
+    Warden automates *Arr media-library maintenance by searching for missing or upgrade-eligible media and cleaning stalled, broken, or unsafe downloads across Sonarr, Radarr, and Lidarr.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/jackohagan94-afk/warden/main/warden.svg</Icon>
+  <WebPage>https://github.com/jackohagan94-afk/warden</WebPage>
+  <Forum>https://github.com/jackohagan94-afk/warden/issues</Forum>
+</CommunityApplications>

@@ -13,6 +13,7 @@ build/
 .pytest_cache/
 .ruff_cache/
 .claude/
-tests/
-README.md
-docs/
+.mypy_cache/
+.codex/
+.agents/
+.mailmap

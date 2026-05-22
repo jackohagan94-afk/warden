@@ -5,7 +5,7 @@ ARG VCS_REF
 
 LABEL org.opencontainers.image.title="Warden"
 LABEL org.opencontainers.image.description="Automated media library management for *Arr ecosystems"
-LABEL org.opencontainers.image.source="https://github.com/johagan/warden"
+LABEL org.opencontainers.image.source="https://github.com/jackohagan94-afk/warden"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.licenses="MIT"

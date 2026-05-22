@@ -213,7 +213,7 @@ instances:
 ```yaml
 services:
   warden:
-    image: johagan/warden:latest
+    image: ghcr.io/jackohagan94-afk/warden:latest
     container_name: warden
     restart: unless-stopped
     env_file:
@@ -228,7 +228,7 @@ services:
       - homelab
 ```
 
-**Registry:** Images are published to GitHub Container Registry (`ghcr.io/johagan/warden`) and mirrored to Docker Hub (`johagan/warden`). For private deployments, use your own registry URL.
+**Registry:** Images are published to GitHub Container Registry (`ghcr.io/jackohagan94-afk/warden`). For private deployments, use your own registry URL.
 
 ## Building
 

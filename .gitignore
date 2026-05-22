@@ -10,4 +10,7 @@ build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.codex/
+.agents/
+.mailmap
 *.egg-info
