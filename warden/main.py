@@ -123,7 +123,7 @@ def verify_arr_clients(clients: list[ArrClient]) -> list[ArrClient]:
                 connected = True
                 break
             if attempt < _MAX_CONNECTION_ATTEMPTS:
-                logger.warning(
+                logger.info(
                     f"[{client.name}] Connection attempt {attempt}/{_MAX_CONNECTION_ATTEMPTS} failed. "
                     f"Retrying in {_RETRY_DELAY_SECONDS}s..."
                 )

@@ -4,14 +4,12 @@ services:
     container_name: warden
     hostname: warden
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       TZ: Australia/Brisbane
       LOG_LEVEL: INFO
       WARDEN_MODE: warden
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - /mnt/user/appdata/warden:/config:ro
     networks:
       - homelab
 

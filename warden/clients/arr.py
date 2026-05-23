@@ -111,8 +111,8 @@ class ArrClient(ABC):
         self._sleep_func = time.sleep
 
         if not self.url.lower().startswith("https://"):
-            logger.warning(
-                f"Client '{name}' is using a non-HTTPS URL ({self.url}). API keys will be transmitted in plaintext."
+            logger.info(
+                f"Client '{name}' is using a non-HTTPS URL ({self.url})."
             )
 
         self.session = requests.Session()
