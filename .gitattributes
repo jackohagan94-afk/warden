@@ -1,0 +1,4 @@
+* text=auto
+*.py text eol=lf
+*.svg binary
+*.yaml text eol=lf
