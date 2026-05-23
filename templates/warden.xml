@@ -7,7 +7,7 @@
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <WebUI/>
-  <Icon>https://raw.githubusercontent.com/jackohagan94-afk/warden/main/warden.png</Icon>
+  <Icon>https://raw.githubusercontent.com/jackohagan94-afk/warden/dev/warden.png</Icon>
   <Overview>Automate *Arr searches and stalled-download cleanup for Sonarr, Radarr, and Lidarr.</Overview>
   <Description>Warden combines Vigilance search scheduling with Defence queue cleanup. Configure your *Arr instances in config.yaml and provide API keys through this template or the container environment.</Description>
   <Support>https://github.com/jackohagan94-afk/warden/issues</Support>
