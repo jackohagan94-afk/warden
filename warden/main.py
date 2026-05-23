@@ -24,6 +24,7 @@ from warden.config import CLEANUP_SETTINGS_SCHEMA, SEARCH_SETTINGS_SCHEMA, load_
 from warden.searcher import run_searcher_loop
 from warden.validators import STALL_CATEGORIES
 
+load_dotenv("/config/.env")
 load_dotenv("/app/.env")
 
 if "TZ" not in os.environ:
@@ -137,7 +138,7 @@ def verify_arr_clients(clients: list[ArrClient]) -> list[ArrClient]:
 
 
 def run() -> None:
-    config = _load_config_from_paths(["config/config.yaml", "config.yaml"])
+    config = _load_config_from_paths(["/config/config.yaml", "config/config.yaml", "config.yaml"])
     if not config:
         sys.exit(1)
 
