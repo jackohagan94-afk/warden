@@ -66,6 +66,7 @@ _CATEGORY_MAP: dict[str, list[str]] = {
         "no audio files found",
         "no files found are eligible for import",
         "no video files found",
+        "invalid season or episode",
     ],
     "no_upgrade": [
         "already meets cutoff",
