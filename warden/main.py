@@ -16,11 +16,15 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
+from dotenv import load_dotenv
+
 from warden.cleaner import run_cleaner_loop
 from warden.clients.arr import _CLIENT_MAP, ArrClient, CircuitBreaker
 from warden.config import CLEANUP_SETTINGS_SCHEMA, SEARCH_SETTINGS_SCHEMA, load_config
 from warden.searcher import run_searcher_loop
 from warden.validators import STALL_CATEGORIES
+
+load_dotenv("/app/.env")
 
 if "TZ" not in os.environ:
     os.environ["TZ"] = "UTC"
