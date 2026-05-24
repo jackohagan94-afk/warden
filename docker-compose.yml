@@ -1,15 +1,17 @@
 services:
   warden:
-    image: ghcr.io/jackohagan94-afk/warden:latest
+    image: ghcr.io/johagan/warden:latest
     container_name: warden
     hostname: warden
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       TZ: Australia/Brisbane
       LOG_LEVEL: INFO
       WARDEN_MODE: warden
     volumes:
-      - /mnt/user/appdata/warden:/config:ro
+      - ./config.yaml:/app/config.yaml:ro
     networks:
       - homelab
 
