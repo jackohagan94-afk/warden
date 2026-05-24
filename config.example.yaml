@@ -47,7 +47,7 @@ killarr:
   cleanup_page_size: 100            # Queue records per API request during cleanup
   max_cleanup_queue_records: 0      # 0 = unlimited, positive = cap total records fetched
   max_removals_per_instance: 25     # Per-instance cleanup cap each cycle; 0 = no cap
-  delete_timeout_seconds: 15        # Timeout for queue deletion calls
+  delete_timeout_seconds: 60        # Timeout for queue deletion calls (increase if *Arr is slow)
   retry_interval_minutes: 0         # Cooldown before re-evaluating removed items (0 = off)
   removal_order: api_order          # api_order | age_ascending | age_descending
   cleanup_search_scope: season      # Sonarr replacement search: episode | season | series
