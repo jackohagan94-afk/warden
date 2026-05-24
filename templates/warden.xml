@@ -1,20 +1,20 @@
 <Container version="2">
   <Name>Warden</Name>
-  <Repository>ghcr.io/jackohagan94-afk/warden:latest</Repository>
-  <Registry>https://github.com/jackohagan94-afk/warden/pkgs/container/warden</Registry>
+  <Repository>ghcr.io/johagan94/warden:latest</Repository>
+  <Registry>https://github.com/johagan94/warden/pkgs/container/warden</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <WebUI/>
-  <Icon>https://raw.githubusercontent.com/jackohagan94-afk/warden/dev/warden.png</Icon>
+  <Icon>https://raw.githubusercontent.com/johagan94/warden/main/warden.png</Icon>
   <Overview>Automate *Arr searches and stalled-download cleanup for Sonarr, Radarr, and Lidarr.</Overview>
   <Description>Warden combines Vigilance search scheduling with Defence queue cleanup. Configure your *Arr instances in config.yaml and provide API keys through this template or the container environment.</Description>
-  <Support>https://github.com/jackohagan94-afk/warden/issues</Support>
-  <Project>https://github.com/jackohagan94-afk/warden</Project>
-  <ReadMe>https://raw.githubusercontent.com/jackohagan94-afk/warden/main/README.md</ReadMe>
+  <Support>https://github.com/johagan94/warden/issues</Support>
+  <Project>https://github.com/johagan94/warden</Project>
+  <ReadMe>https://raw.githubusercontent.com/johagan94/warden/main/README.md</ReadMe>
   <Category>MediaApp:Other Tools:Utilities</Category>
-  <TemplateURL>https://raw.githubusercontent.com/jackohagan94-afk/warden/main/templates/warden.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/johagan94/warden/main/templates/warden.xml</TemplateURL>
   <License>MIT</License>
 
   <Config Name="Config Directory" Target="/config" Default="/mnt/user/appdata/warden" Mode="ro" Description="Warden config directory. Place config.yaml and optionally .env here. Container loads .env on startup — explicit variables above take priority." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/warden</Config>
@@ -24,7 +24,8 @@
   <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Description="Python logging level." Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
   <Config Name="Warden Mode" Target="WARDEN_MODE" Default="warden" Description="warden runs Vigilance and Defence. Use vigilance for search only or defence for cleanup only." Type="Variable" Display="always" Required="true" Mask="false">warden</Config>
 
-  <Config Name="Sonarr API Key" Target="SONARR_API_KEY" Default="" Description="Optional Sonarr API key referenced by config.yaml as ${SONARR_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Radarr API Key" Target="RADARR_API_KEY" Default="" Description="Optional Radarr API key referenced by config.yaml as ${RADARR_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Lidarr API Key" Target="LIDARR_API_KEY" Default="" Description="Optional Lidarr API key referenced by config.yaml as ${LIDARR_API_KEY}." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Sonarr TV API Key" Target="SONARR_TV_API_KEY" Default="" Description="Sonarr TV API key referenced by config.yaml as ${SONARR_TV_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Sonarr Anime API Key" Target="SONARR_ANIME_API_KEY" Default="" Description="Sonarr Anime API key referenced by config.yaml as ${SONARR_ANIME_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Radarr API Key" Target="RADARR_API_KEY" Default="" Description="Radarr API key referenced by config.yaml as ${RADARR_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Lidarr API Key" Target="LIDARR_API_KEY" Default="" Description="Lidarr API key referenced by config.yaml as ${LIDARR_API_KEY}." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 </Container>
