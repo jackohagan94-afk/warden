@@ -294,7 +294,7 @@ def run_search_cycle(
     )
 
 
-def run_searcher_loop(active_clients: list[ArrClient], settings: dict[str, Any]) -> None:
+def run_searcher_loop(active_clients: list[ArrClient], settings: dict[str, Any], shutdown_event: Any = None) -> None:
     _log_searcher_start(active_clients, settings)
 
     missing_interval_secs = _resolve_interval_secs(settings, "run_interval_minutes_missing")
@@ -306,13 +306,19 @@ def run_searcher_loop(active_clients: list[ArrClient], settings: dict[str, Any])
     last_upgrade_run = -math.inf
 
     while True:
+        if shutdown_event and shutdown_event.is_set():
+            logger.info("Shutdown requested, exiting searcher loop.")
+            break
         if parsed_window:
             start_time, end_time = parsed_window
             current_time = datetime.datetime.now().time()
             if not _is_within_active_hours(start_time, end_time, current_time):
                 secs = _seconds_until_window_open(start_time, current_time)
                 logger.info(f"Outside active hours ({active_hours}). Sleeping {secs}s until window opens.")
-                time.sleep(secs)
+                if shutdown_event:
+                    shutdown_event.wait(timeout=secs)
+                else:
+                    time.sleep(secs)
                 continue
 
         monotonic_now = time.monotonic()
@@ -338,12 +344,16 @@ def run_searcher_loop(active_clients: list[ArrClient], settings: dict[str, Any])
                 upgrade_interval_secs - (monotonic_now - last_upgrade_run),
             )
         )
-        time.sleep(
-            max(
-                _MIN_SLEEP_SECONDS,
-                min(
-                    missing_interval_secs - (monotonic_now - last_missing_run),
-                    upgrade_interval_secs - (monotonic_now - last_upgrade_run),
-                ),
-            )
+        sleep_secs = max(
+            _MIN_SLEEP_SECONDS,
+            min(
+                missing_interval_secs - (monotonic_now - last_missing_run),
+                upgrade_interval_secs - (monotonic_now - last_upgrade_run),
+            ),
         )
+        if shutdown_event:
+            if shutdown_event.wait(timeout=max(1, int(sleep_secs))):
+                logger.info("Shutdown requested, exiting searcher loop.")
+                break
+        else:
+            time.sleep(sleep_secs)

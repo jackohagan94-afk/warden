@@ -165,7 +165,7 @@ def run_removal_cycle(active_clients: list[Any], settings: dict[str, Any]) -> No
     logger.info(f"Cleanup cycle summary: attempted={removed_attempts}, failed={failed}, duration={duration:.2f}s.")
 
 
-def run_cleaner_loop(active_clients: list[Any], settings: dict[str, Any]) -> None:
+def run_cleaner_loop(active_clients: list[Any], settings: dict[str, Any], shutdown_event: Any = None) -> None:
     _log_cleaner_start(active_clients, settings)
 
     run_interval_seconds = _get_setting(settings, "interval")
@@ -173,17 +173,27 @@ def run_cleaner_loop(active_clients: list[Any], settings: dict[str, Any]) -> Non
     parsed_window = parse_active_hours(active_hours) if active_hours else None
 
     while True:
+        if shutdown_event and shutdown_event.is_set():
+            logger.info("Shutdown requested, exiting cleaner loop.")
+            break
         if parsed_window:
             start_time, end_time = parsed_window
             now = datetime.datetime.now().time()
             if not _is_within_active_hours(start_time, end_time, now):
                 secs = _seconds_until_window_open(start_time, now)
                 logger.info(f"Outside active hours ({active_hours}). Sleeping {secs}s until window opens.")
-                time.sleep(secs)
+                if shutdown_event:
+                    shutdown_event.wait(timeout=secs)
+                else:
+                    time.sleep(secs)
                 continue
         try:
             run_removal_cycle(active_clients, settings)
         except Exception:
             logger.exception("Cleanup cycle failed unexpectedly; continuing after sleep.")
-        logger.info(f"--- Removal cycle complete. Sleeping for {run_interval_seconds}s. ---")
-        time.sleep(run_interval_seconds)
+        if shutdown_event:
+            if shutdown_event.wait(timeout=run_interval_seconds):
+                logger.info("Shutdown requested, exiting cleaner loop.")
+                break
+        else:
+            time.sleep(run_interval_seconds)

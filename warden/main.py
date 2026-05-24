@@ -10,6 +10,7 @@ Legacy mode values are also accepted: both, search, cleanup.
 
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -53,6 +54,8 @@ _MODE_MAP = {
     "search": "search",
     "cleanup": "cleanup",
 }
+
+shutdown_event = threading.Event()
 
 
 ConfigMap = dict[str, Any]
@@ -170,28 +173,38 @@ def run() -> None:
         logger.warning(f"Unrecognized WARDEN_MODE '{raw_mode}'. Defaulting to 'warden'.")
         mode = "both"
 
+    def handle_signal(signum: int, _frame: object | None = None) -> None:
+        logger.info(f"Signal {signum} received. Shutting down gracefully after current cycle...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+
     if mode == "search":
         logger.info("Running in Vigilance mode (search only).")
-        run_searcher_loop(active_clients, search_settings)
+        run_searcher_loop(active_clients, search_settings, shutdown_event)
     elif mode == "cleanup":
         logger.info("Running in Defence mode (cleanup only).")
-        run_cleaner_loop(active_clients, cleanup_settings)
+        run_cleaner_loop(active_clients, cleanup_settings, shutdown_event)
     else:
         logger.info("Running in Warden mode (Vigilance + Defence).")
         searcher_thread = threading.Thread(
-            target=run_searcher_loop, args=(active_clients, search_settings), daemon=True, name="vigilance"
+            target=run_searcher_loop, args=(active_clients, search_settings, shutdown_event), daemon=False, name="vigilance"
         )
         cleaner_thread = threading.Thread(
-            target=run_cleaner_loop, args=(active_clients, cleanup_settings), daemon=True, name="defence"
+            target=run_cleaner_loop, args=(active_clients, cleanup_settings, shutdown_event), daemon=False, name="defence"
         )
         searcher_thread.start()
         cleaner_thread.start()
         try:
-            searcher_thread.join()
-            cleaner_thread.join()
+            while not shutdown_event.is_set():
+                shutdown_event.wait(timeout=1.0)
         except KeyboardInterrupt:
-            logger.info("Shutting down...")
-            sys.exit(0)
+            shutdown_event.set()
+        logger.info("Waiting for threads to finish current cycle...")
+        searcher_thread.join(timeout=30)
+        cleaner_thread.join(timeout=30)
+        logger.info("Shutdown complete.")
 
 
 if __name__ == "__main__":

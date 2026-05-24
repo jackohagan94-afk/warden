@@ -88,6 +88,7 @@ CLEANUP_SETTINGS_SCHEMA: SchemaMap = {
     "max_removals_per_instance": {"default": 0, "type": int, "min_value": 0},
     "cleanup_search_scope": {"default": "episode", "type": str, "choices": ("episode", "season", "series")},
     "protect_downloading_series": {"default": False, "type": bool},
+    "queue_max_age_hours": {"default": 0, "type": int, "min_value": 0},
     "removal_order": {"default": "api_order", "type": str, "choices": VALID_REMOVAL_ORDERS},
     "retry_interval_minutes": {"default": 0, "type": int, "min_value": 0},
     "search_after_cleanup": {"default": None, "type": bool},

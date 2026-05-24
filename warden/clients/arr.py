@@ -96,6 +96,7 @@ class ArrClient(ABC):
         self.max_cleanup_queue_records = cleanup_settings.get("max_cleanup_queue_records", 0)
         self.cleanup_retry_minutes = cleanup_settings.get("retry_interval_minutes", 0)
         self.delete_timeout_seconds = cleanup_settings.get("delete_timeout_seconds", 15)
+        self.queue_max_age_hours = cleanup_settings.get("queue_max_age_hours", 0)
         cleanup_override = cleanup_settings.get("search_after_cleanup")
         self.search_after_cleanup = (
             search_settings.get("search_after_cleanup", True) if cleanup_override is None else cleanup_override
@@ -492,7 +493,24 @@ class ArrClient(ABC):
         return result
 
     def _is_stalled(self, record: Record) -> bool:
-        return record.get("trackedDownloadStatus") == "warning"
+        status = record.get("status", "")
+        tracked_status = record.get("trackedDownloadStatus", "")
+        if tracked_status == "warning":
+            return True
+        if status == "downloadClientUnavailable":
+            return True
+        if status == "failed":
+            return True
+        if self.queue_max_age_hours > 0:
+            added = record.get("added", "")
+            if added and status != "completed":
+                try:
+                    added_dt = datetime.datetime.fromisoformat(added.replace("Z", "+00:00"))
+                    if datetime.datetime.now(datetime.UTC) - added_dt > datetime.timedelta(hours=self.queue_max_age_hours):
+                        return True
+                except (ValueError, TypeError):
+                    pass
+        return False
 
     def _resolve_cleanup_action(self, category: str) -> str:
         action = self.cleanup_settings.get(category)
@@ -547,17 +565,23 @@ class ArrClient(ABC):
                     skip_stats["series_protected"] += 1
                     continue
 
-                messages: list[str] = list(
-                    dict.fromkeys(
-                        msg for msg_obj in record.get("statusMessages", []) for msg in msg_obj.get("messages", [])
+                status = record.get("status", "")
+                if status == "downloadClientUnavailable":
+                    category = "download_unavailable"
+                    messages = []
+                    action = self._resolve_cleanup_action(category)
+                else:
+                    messages: list[str] = list(
+                        dict.fromkeys(
+                            msg for msg_obj in record.get("statusMessages", []) for msg in msg_obj.get("messages", [])
+                        )
                     )
-                )
-                category = classify_stall(messages)
-                if category == "unknown":
-                    logger.warning(
-                        f'[{self.name}] Unrecognized status messages for "{title}" — please report: {messages}'
-                    )
-                action = self._resolve_cleanup_action(category)
+                    category = classify_stall(messages)
+                    if category == "unknown":
+                        logger.warning(
+                            f'[{self.name}] Unrecognized status messages for "{title}" — please report: {messages}'
+                        )
+                    action = self._resolve_cleanup_action(category)
 
                 if action == "ignore":
                     logger.debug(f"[{self.name}] Skipping stalled item (action: ignore, category: {category}): {title}")

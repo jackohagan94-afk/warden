@@ -30,6 +30,7 @@ STALL_CATEGORIES = (
     "missing_items",
     "tba_title",
     "no_messages",
+    "download_unavailable",
     "unknown",
 )
 

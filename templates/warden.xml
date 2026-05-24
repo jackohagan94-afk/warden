@@ -18,6 +18,7 @@
   <License>MIT</License>
 
   <Config Name="Config Directory" Target="/config" Default="/mnt/user/appdata/warden" Mode="ro" Description="Warden config directory. Place config.yaml and optionally .env here. Container loads .env on startup — explicit variables above take priority." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/warden</Config>
+  <Config Name="Env File" Target="/app/.env" Default="/mnt/user/appdata/warden/.env" Mode="ro" Description="Optional .env file with API keys and other secrets. Container loads this on startup — explicit variables above take priority." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/warden/.env</Config>
 
   <Config Name="Timezone" Target="TZ" Default="UTC" Description="IANA timezone for logs and active-hours windows." Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
   <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Description="Python logging level." Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>

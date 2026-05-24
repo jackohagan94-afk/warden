@@ -57,6 +57,13 @@ killarr:
   include_tags: []                  # Optional *Arr tag labels to include
   exclude_tags: []                  # Optional *Arr tag labels to exclude
 
+  # Aggressive queue cleanup for orphaned items (decypharr / infinite debrid)
+  # When download client (Sabnzbd, qBittorrent via decypharr) becomes unavailable,
+  # *arr marks items as downloadClientUnavailable. Setting this to blocklist or
+  # retry aggressively cleans them once the server is back.
+  download_unavailable: blocklist    # Items orphaned by download client outage
+  queue_max_age_hours: 0             # 0 = off. Items stuck in queue > N hours cleaned (non-completed)
+
   # Action per stall reason: ignore | remove | retry | blocklist
   dangerous_file: blocklist
   manual_import: blocklist

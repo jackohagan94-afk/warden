@@ -826,6 +826,91 @@ class TestCleanupRemoval:
         assert post_calls == []
 
 
+class TestStallDetection:
+    def test_stalled_detects_tracked_download_warning(self) -> None:
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {})
+        assert client._is_stalled({"trackedDownloadStatus": "warning", "status": "completed"})
+
+    def test_stalled_detects_download_client_unavailable(self) -> None:
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {})
+        assert client._is_stalled({"status": "downloadClientUnavailable", "trackedDownloadStatus": ""})
+
+    def test_stalled_detects_failed_status(self) -> None:
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {})
+        assert client._is_stalled({"status": "failed", "trackedDownloadStatus": "ok"})
+
+    def test_stalled_ignores_ok_items(self) -> None:
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {})
+        assert not client._is_stalled({"status": "completed", "trackedDownloadStatus": "ok"})
+
+    def test_stalled_age_based_when_queue_max_age_exceeded(self) -> None:
+        client = SonarrClient(
+            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1}
+        )
+        assert client._is_stalled({
+            "status": "downloading",
+            "trackedDownloadStatus": "ok",
+            "added": "2024-01-01T00:00:00Z",
+        })
+
+    def test_stalled_age_based_respects_completed_status(self) -> None:
+        client = SonarrClient(
+            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1}
+        )
+        assert not client._is_stalled({
+            "status": "completed",
+            "trackedDownloadStatus": "ok",
+            "added": "2024-01-01T00:00:00Z",
+        })
+
+    def test_stalled_age_based_ignores_recent_items(self) -> None:
+        client = SonarrClient(
+            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 24}
+        )
+        assert not client._is_stalled({
+            "status": "downloading",
+            "trackedDownloadStatus": "ok",
+            "added": "2026-05-24T00:00:00Z",
+        })
+
+    def test_download_unavailable_category_in_stall_categories(self) -> None:
+        from warden.validators import STALL_CATEGORIES
+        assert "download_unavailable" in STALL_CATEGORIES
+
+    def test_get_stalled_items_processes_download_client_unavailable(self) -> None:
+        client = SonarrClient(
+            "test", "http://sonarr:8989", "abc123",
+            {"stagger_interval_seconds": 0},
+            {"download_unavailable": "blocklist"},
+        )
+        client.session.get = lambda url, *, params, timeout: type(
+            "R", (),
+            {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: {
+                    "records": [
+                        {
+                            "id": 1,
+                            "status": "downloadClientUnavailable",
+                            "trackedDownloadStatus": "",
+                            "seriesId": 10,
+                            "series": {"title": "Orphaned Show", "tags": []},
+                            "seasonNumber": 1,
+                            "episodeId": 99,
+                            "episodeNumber": 1,
+                            "added": "2026-05-22T00:00:00Z",
+                            "statusMessages": [],
+                        },
+                    ]
+                },
+            },
+        )()
+        items, stats = client.get_stalled_items()
+        assert len(items) == 1
+        assert items[0].category == "download_unavailable"
+        assert items[0].action == "blocklist"
+
+
 class TestSearchCycle:
     def test_search_allocation_respects_client_weight(self) -> None:
         class Client:
