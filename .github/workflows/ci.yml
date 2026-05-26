@@ -63,4 +63,4 @@ jobs:
       - name: Build image
         run: docker build -t warden:test .
       - name: Verify image
-        run: docker run --rm warden:test python -c "import warden; print(f'Warden {warden.__version__} OK')"
+        run: docker run --rm --entrypoint python warden:test -c "import warden; print(f'Warden {warden.__version__} OK')"
