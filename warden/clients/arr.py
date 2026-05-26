@@ -112,9 +112,7 @@ class ArrClient(ABC):
         self._sleep_func = time.sleep
 
         if not self.url.lower().startswith("https://"):
-            logger.info(
-                f"Client '{name}' is using a non-HTTPS URL ({self.url})."
-            )
+            logger.info(f"Client '{name}' is using a non-HTTPS URL ({self.url}).")
 
         self.session = requests.Session()
         self.session.headers.update({"X-Api-Key": api_key, "Content-Type": "application/json"})
@@ -506,7 +504,9 @@ class ArrClient(ABC):
             if added and status != "completed":
                 try:
                     added_dt = datetime.datetime.fromisoformat(added.replace("Z", "+00:00"))
-                    if datetime.datetime.now(datetime.UTC) - added_dt > datetime.timedelta(hours=self.queue_max_age_hours):
+                    if datetime.datetime.now(datetime.UTC) - added_dt > datetime.timedelta(
+                        hours=self.queue_max_age_hours
+                    ):
                         return True
                 except (ValueError, TypeError):
                     pass
