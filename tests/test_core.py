@@ -1,5 +1,7 @@
 """Tests for Warden unified package."""
 
+from datetime import UTC, datetime, timedelta
+
 from warden.cleaner import run_removal_cycle
 from warden.clients.arr import CircuitBreaker, LidarrClient, QueueItem, RadarrClient, SonarrClient
 from warden.config import CLEANUP_SETTINGS_SCHEMA, SEARCH_SETTINGS_SCHEMA, parse_config
@@ -844,47 +846,52 @@ class TestStallDetection:
         assert not client._is_stalled({"status": "completed", "trackedDownloadStatus": "ok"})
 
     def test_stalled_age_based_when_queue_max_age_exceeded(self) -> None:
-        client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1}
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1})
+        assert client._is_stalled(
+            {
+                "status": "downloading",
+                "trackedDownloadStatus": "ok",
+                "added": "2024-01-01T00:00:00Z",
+            }
         )
-        assert client._is_stalled({
-            "status": "downloading",
-            "trackedDownloadStatus": "ok",
-            "added": "2024-01-01T00:00:00Z",
-        })
 
     def test_stalled_age_based_respects_completed_status(self) -> None:
-        client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1}
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1})
+        assert not client._is_stalled(
+            {
+                "status": "completed",
+                "trackedDownloadStatus": "ok",
+                "added": "2024-01-01T00:00:00Z",
+            }
         )
-        assert not client._is_stalled({
-            "status": "completed",
-            "trackedDownloadStatus": "ok",
-            "added": "2024-01-01T00:00:00Z",
-        })
 
     def test_stalled_age_based_ignores_recent_items(self) -> None:
-        client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 24}
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 24})
+        recent_added = (datetime.now(UTC) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        assert not client._is_stalled(
+            {
+                "status": "downloading",
+                "trackedDownloadStatus": "ok",
+                "added": recent_added,
+            }
         )
-        assert not client._is_stalled({
-            "status": "downloading",
-            "trackedDownloadStatus": "ok",
-            "added": "2026-05-24T00:00:00Z",
-        })
 
     def test_download_unavailable_category_in_stall_categories(self) -> None:
         from warden.validators import STALL_CATEGORIES
+
         assert "download_unavailable" in STALL_CATEGORIES
 
     def test_get_stalled_items_processes_download_client_unavailable(self) -> None:
         client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123",
+            "test",
+            "http://sonarr:8989",
+            "abc123",
             {"stagger_interval_seconds": 0},
             {"download_unavailable": "blocklist"},
         )
         client.session.get = lambda url, *, params, timeout: type(
-            "R", (),
+            "R",
+            (),
             {
                 "raise_for_status": lambda self: None,
                 "json": lambda self: {

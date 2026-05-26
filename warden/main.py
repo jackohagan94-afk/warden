@@ -189,10 +189,16 @@ def run() -> None:
     else:
         logger.info("Running in Warden mode (Vigilance + Defence).")
         searcher_thread = threading.Thread(
-            target=run_searcher_loop, args=(active_clients, search_settings, shutdown_event), daemon=False, name="vigilance"
+            target=run_searcher_loop,
+            args=(active_clients, search_settings, shutdown_event),
+            daemon=False,
+            name="vigilance",
         )
         cleaner_thread = threading.Thread(
-            target=run_cleaner_loop, args=(active_clients, cleanup_settings, shutdown_event), daemon=False, name="defence"
+            target=run_cleaner_loop,
+            args=(active_clients, cleanup_settings, shutdown_event),
+            daemon=False,
+            name="defence",
         )
         searcher_thread.start()
         cleaner_thread.start()
