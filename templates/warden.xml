@@ -1,13 +1,13 @@
 <Container version="2">
   <Name>Warden</Name>
-  <Repository>ghcr.io/johogan94/warden:latest</Repository>
-  <Registry>https://github.com/johogan94/warden/pkgs/container/warden</Registry>
+  <Repository>ghcr.io/johagan94/warden:latest</Repository>
+  <Registry>https://github.com/johagan94/warden/pkgs/container/warden</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <WebUI/>
-  <Icon>https://raw.githubusercontent.com/johogan94/warden/main/warden.png</Icon>
+  <Icon>https://raw.githubusercontent.com/johagan94/warden/main/warden.png</Icon>
   <Overview>Automated *Arr search scheduling and stalled-download cleanup for Sonarr, Radarr, and Lidarr.</Overview>
   <Description>
 Warden handles two jobs that every *Arr homelab needs: scheduled searching for missing or upgrade-eligible media, and automatic cleanup of stalled, broken, or blocklist-worthy downloads.
@@ -33,11 +33,11 @@ Warden handles two jobs that every *Arr homelab needs: scheduled searching for m
 
 [b]Setup:[/b] Copy [b]config.example.yaml[/b] from the GitHub repo to your config directory as [b]config.yaml[/b], fill in your Sonarr/Radarr/Lidarr host URLs, and use [b]${SONARR_TV_API_KEY}[/b] / [b]${SONARR_ANIME_API_KEY}[/b] / [b]${RADARR_API_KEY}[/b] / [b]${LIDARR_API_KEY}[/b] placeholders so keys stay out of config files. Set those keys below. See the README for the full config reference.
   </Description>
-  <Support>https://github.com/johogan94/warden/issues</Support>
-  <Project>https://github.com/johogan94/warden</Project>
-  <ReadMe>https://raw.githubusercontent.com/johogan94/warden/main/README.md</ReadMe>
+  <Support>https://github.com/johagan94/warden/issues</Support>
+  <Project>https://github.com/johagan94/warden</Project>
+  <ReadMe>https://raw.githubusercontent.com/johagan94/warden/main/README.md</ReadMe>
   <Category>MediaApp:Other Tools:Utilities</Category>
-  <TemplateURL>https://raw.githubusercontent.com/johogan94/warden/main/templates/warden.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/johagan94/warden/main/templates/warden.xml</TemplateURL>
   <License>MIT</License>
   <ExtraSearchTerms>sonarr radarr lidarr arr search missing upgrade stalled cleanup queue killarr vigilance defence</ExtraSearchTerms>
 
