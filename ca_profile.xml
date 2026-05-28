@@ -1,8 +1,8 @@
 <CommunityApplications>
   <Profile>
-    Warden automates *Arr media-library maintenance by searching for missing or upgrade-eligible media and cleaning stalled, broken, or unsafe downloads across Sonarr, Radarr, and Lidarr.
+    Warden automates *Arr media-library maintenance: Vigilance schedules missing and upgrade searches across Sonarr, Radarr, and Lidarr; Defence (Killarr) removes and blocklists stalled or broken downloads. Configured via a single config.yaml with environment-variable substitution for API keys.
   </Profile>
-  <Icon>https://raw.githubusercontent.com/jackohagan94-afk/warden/main/warden.svg</Icon>
-  <WebPage>https://github.com/jackohagan94-afk/warden</WebPage>
-  <Forum>https://github.com/jackohagan94-afk/warden/issues</Forum>
+  <Icon>https://raw.githubusercontent.com/johogan94/warden/main/warden.png</Icon>
+  <WebPage>https://github.com/johogan94/warden</WebPage>
+  <Forum>https://github.com/johogan94/warden/issues</Forum>
 </CommunityApplications>

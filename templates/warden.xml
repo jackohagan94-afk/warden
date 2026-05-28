@@ -1,31 +1,82 @@
 <Container version="2">
   <Name>Warden</Name>
-  <Repository>ghcr.io/johagan94/warden:latest</Repository>
-  <Registry>https://github.com/johagan94/warden/pkgs/container/warden</Registry>
+  <Repository>ghcr.io/johogan94/warden:latest</Repository>
+  <Registry>https://github.com/johogan94/warden/pkgs/container/warden</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <WebUI/>
-  <Icon>https://raw.githubusercontent.com/johagan94/warden/main/warden.png</Icon>
-  <Overview>Automate *Arr searches and stalled-download cleanup for Sonarr, Radarr, and Lidarr.</Overview>
-  <Description>Warden combines Vigilance search scheduling with Defence queue cleanup. Configure your *Arr instances in config.yaml and provide API keys through this template or the container environment.</Description>
-  <Support>https://github.com/johagan94/warden/issues</Support>
-  <Project>https://github.com/johagan94/warden</Project>
-  <ReadMe>https://raw.githubusercontent.com/johagan94/warden/main/README.md</ReadMe>
+  <Icon>https://raw.githubusercontent.com/johogan94/warden/main/warden.png</Icon>
+  <Overview>Automated *Arr search scheduling and stalled-download cleanup for Sonarr, Radarr, and Lidarr.</Overview>
+  <Description>
+Warden handles two jobs that every *Arr homelab needs: scheduled searching for missing or upgrade-eligible media, and automatic cleanup of stalled, broken, or blocklist-worthy downloads.
+
+[b]Vigilance — automated search scheduling[/b]
+[ul]
+[li]Configurable run intervals for missing and upgrade searches[/li]
+[li]Per-instance stagger, retry windows, and batch-size caps[/li]
+[li]Active-hours window — restrict searches to quiet times[/li]
+[li]Interleaved multi-instance cycling to spread load[/li]
+[li]Season-pack awareness for Sonarr[/li]
+[li]Include/exclude by *Arr tag label[/li]
+[/ul]
+
+[b]Defence (Killarr) — download cleanup[/b]
+[ul]
+[li]Detects stalled, dangerous-file, no-files, TBA, and unknown queue items[/li]
+[li]Per-reason action: ignore / remove / retry / blocklist[/li]
+[li]Configurable removal cap per instance per cycle[/li]
+[li]Optionally triggers a replacement search after cleanup[/li]
+[li]Dry-run mode — log what would happen without touching anything[/li]
+[/ul]
+
+[b]Setup:[/b] Copy [b]config.example.yaml[/b] from the GitHub repo to your config directory as [b]config.yaml[/b], fill in your Sonarr/Radarr/Lidarr host URLs, and use [b]${SONARR_TV_API_KEY}[/b] / [b]${SONARR_ANIME_API_KEY}[/b] / [b]${RADARR_API_KEY}[/b] / [b]${LIDARR_API_KEY}[/b] placeholders so keys stay out of config files. Set those keys below. See the README for the full config reference.
+  </Description>
+  <Support>https://github.com/johogan94/warden/issues</Support>
+  <Project>https://github.com/johogan94/warden</Project>
+  <ReadMe>https://raw.githubusercontent.com/johogan94/warden/main/README.md</ReadMe>
   <Category>MediaApp:Other Tools:Utilities</Category>
-  <TemplateURL>https://raw.githubusercontent.com/johagan94/warden/main/templates/warden.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/johogan94/warden/main/templates/warden.xml</TemplateURL>
   <License>MIT</License>
+  <ExtraSearchTerms>sonarr radarr lidarr arr search missing upgrade stalled cleanup queue killarr vigilance defence</ExtraSearchTerms>
 
-  <Config Name="Config Directory" Target="/config" Default="/mnt/user/appdata/warden" Mode="ro" Description="Warden config directory. Place config.yaml and optionally .env here. Container loads .env on startup — explicit variables above take priority." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/warden</Config>
-  <Config Name="Env File" Target="/app/.env" Default="/mnt/user/appdata/warden/.env" Mode="ro" Description="Optional .env file with API keys and other secrets. Container loads this on startup — explicit variables above take priority." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/warden/.env</Config>
+  <!-- Volumes -->
+  <Config Name="Config Directory" Target="/config" Default="/mnt/user/appdata/warden" Mode="rw"
+    Description="Warden config directory. Place config.yaml (and optionally .env) here. The container loads .env on startup — variables set below take priority over .env."
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/warden</Config>
 
-  <Config Name="Timezone" Target="TZ" Default="UTC" Description="IANA timezone for logs and active-hours windows." Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
-  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Description="Python logging level." Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
-  <Config Name="Warden Mode" Target="WARDEN_MODE" Default="warden" Description="warden runs Vigilance and Defence. Use vigilance for search only or defence for cleanup only." Type="Variable" Display="always" Required="true" Mask="false">warden</Config>
+  <Config Name="Env File" Target="/app/.env" Default="/mnt/user/appdata/warden/.env" Mode="ro"
+    Description="Optional .env file with API keys and other secrets. Container loads this on startup — variables set below take priority over .env."
+    Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/warden/.env</Config>
 
-  <Config Name="Sonarr TV API Key" Target="SONARR_TV_API_KEY" Default="" Description="Sonarr TV API key referenced by config.yaml as ${SONARR_TV_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Sonarr Anime API Key" Target="SONARR_ANIME_API_KEY" Default="" Description="Sonarr Anime API key referenced by config.yaml as ${SONARR_ANIME_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Radarr API Key" Target="RADARR_API_KEY" Default="" Description="Radarr API key referenced by config.yaml as ${RADARR_API_KEY}." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Lidarr API Key" Target="LIDARR_API_KEY" Default="" Description="Lidarr API key referenced by config.yaml as ${LIDARR_API_KEY}." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <!-- Runtime -->
+  <Config Name="Warden Mode" Target="WARDEN_MODE" Default="warden"
+    Description="Controls which subsystems run. [b]warden[/b] runs both Vigilance (search) and Defence (cleanup). [b]vigilance[/b] runs search-only. [b]defence[/b] runs cleanup-only."
+    Type="Variable" Display="always" Required="true" Mask="false">warden</Config>
+
+  <Config Name="Timezone" Target="TZ" Default="UTC"
+    Description="IANA timezone for logs and active-hours windows, e.g. Australia/Sydney."
+    Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
+
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO"
+    Description="Python logging level: DEBUG, INFO, WARNING, or ERROR."
+    Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+
+  <!-- API Keys — referenced in config.yaml as ${VAR_NAME} -->
+  <Config Name="Sonarr TV API Key" Target="SONARR_TV_API_KEY" Default=""
+    Description="Sonarr TV instance API key. Reference in config.yaml as [b]${SONARR_TV_API_KEY}[/b]. Sonarr → Settings → General → API Key."
+    Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Sonarr Anime API Key" Target="SONARR_ANIME_API_KEY" Default=""
+    Description="Sonarr Anime instance API key (if separate from TV). Reference in config.yaml as [b]${SONARR_ANIME_API_KEY}[/b]."
+    Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Radarr API Key" Target="RADARR_API_KEY" Default=""
+    Description="Radarr API key. Reference in config.yaml as [b]${RADARR_API_KEY}[/b]. Radarr → Settings → General → API Key."
+    Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Lidarr API Key" Target="LIDARR_API_KEY" Default=""
+    Description="Lidarr API key. Reference in config.yaml as [b]${LIDARR_API_KEY}[/b]. Lidarr → Settings → General → API Key."
+    Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 </Container>
