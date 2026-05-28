@@ -7,7 +7,7 @@
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <WebUI/>
-  <Icon>https://raw.githubusercontent.com/johagan94/warden/main/warden.png</Icon>
+  <Icon>https://raw.githubusercontent.com/johagan94/unraid-templates/main/icons/warden.png</Icon>
   <Overview>Automated *Arr search scheduling and stalled-download cleanup for Sonarr, Radarr, and Lidarr.</Overview>
   <Description>
 Warden handles two jobs that every *Arr homelab needs: scheduled searching for missing or upgrade-eligible media, and automatic cleanup of stalled, broken, or blocklist-worthy downloads.
