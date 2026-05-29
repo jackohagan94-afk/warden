@@ -36,6 +36,36 @@ class TestConfigParsing:
         )
         assert config["search_settings"]["circuit_breaker_threshold"] == 5
 
+    def test_section_aliases_vigilance_defence(self) -> None:
+        # Canonical section names match WARDEN_MODE: vigilance=search, defence=cleanup.
+        config = parse_config(
+            {
+                "vigilance": {"max_queue_size": 321},
+                "defence": {"batch_size": 7},
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                },
+            }
+        )
+        assert config["search_settings"]["max_queue_size"] == 321
+        assert config["cleanup_settings"]["batch_size"] == 7
+
+    def test_section_alias_precedence(self) -> None:
+        # When both the new name and a legacy alias are present, the new name wins.
+        config = parse_config(
+            {
+                "vigilance": {"max_queue_size": 111},
+                "global": {"max_queue_size": 999},
+                "defence": {"batch_size": 11},
+                "cleanup": {"batch_size": 99},
+                "instances": {
+                    "MyRadarr": {"type": "radarr", "host": "http://radarr:7878", "api_key": "abc123", "enabled": True},
+                },
+            }
+        )
+        assert config["search_settings"]["max_queue_size"] == 111
+        assert config["cleanup_settings"]["batch_size"] == 11
+
     def test_max_queue_size(self) -> None:
         config = parse_config(
             {
@@ -844,47 +874,56 @@ class TestStallDetection:
         assert not client._is_stalled({"status": "completed", "trackedDownloadStatus": "ok"})
 
     def test_stalled_age_based_when_queue_max_age_exceeded(self) -> None:
-        client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1}
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1})
+        assert client._is_stalled(
+            {
+                "status": "downloading",
+                "trackedDownloadStatus": "ok",
+                "added": "2024-01-01T00:00:00Z",
+            }
         )
-        assert client._is_stalled({
-            "status": "downloading",
-            "trackedDownloadStatus": "ok",
-            "added": "2024-01-01T00:00:00Z",
-        })
 
     def test_stalled_age_based_respects_completed_status(self) -> None:
-        client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1}
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1})
+        assert not client._is_stalled(
+            {
+                "status": "completed",
+                "trackedDownloadStatus": "ok",
+                "added": "2024-01-01T00:00:00Z",
+            }
         )
-        assert not client._is_stalled({
-            "status": "completed",
-            "trackedDownloadStatus": "ok",
-            "added": "2024-01-01T00:00:00Z",
-        })
 
     def test_stalled_age_based_ignores_recent_items(self) -> None:
-        client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 24}
+        import datetime
+
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 24})
+        # "recent" must be relative to now, not a hardcoded date — a fixed date
+        # silently ages past the threshold and the test starts failing on wall-clock drift.
+        recent = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)).isoformat()
+        assert not client._is_stalled(
+            {
+                "status": "downloading",
+                "trackedDownloadStatus": "ok",
+                "added": recent,
+            }
         )
-        assert not client._is_stalled({
-            "status": "downloading",
-            "trackedDownloadStatus": "ok",
-            "added": "2026-05-24T00:00:00Z",
-        })
 
     def test_download_unavailable_category_in_stall_categories(self) -> None:
         from warden.validators import STALL_CATEGORIES
+
         assert "download_unavailable" in STALL_CATEGORIES
 
     def test_get_stalled_items_processes_download_client_unavailable(self) -> None:
         client = SonarrClient(
-            "test", "http://sonarr:8989", "abc123",
+            "test",
+            "http://sonarr:8989",
+            "abc123",
             {"stagger_interval_seconds": 0},
             {"download_unavailable": "blocklist"},
         )
         client.session.get = lambda url, *, params, timeout: type(
-            "R", (),
+            "R",
+            (),
             {
                 "raise_for_status": lambda self: None,
                 "json": lambda self: {

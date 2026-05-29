@@ -268,15 +268,19 @@ def parse_config(config: ConfigMap) -> ConfigMap:
         if key not in config:
             raise ValueError(f"Missing required top-level key: '{key}'")
 
-    search_settings = cast(ConfigMap, dict(config.get("global", {})))
+    # Section name: "vigilance" matches the WARDEN_MODE name for the search
+    # loop; "global" is kept as a backward-compat alias.
+    search_settings = cast(ConfigMap, dict(config.get("vigilance", config.get("global", {}))))
     if not isinstance(search_settings, dict):
-        raise ValueError("'global' must be a YAML mapping.")
+        raise ValueError("'vigilance' (or legacy 'global') must be a YAML mapping.")
     _apply_interval_conversions(search_settings)
     _validate_search_settings(search_settings, SEARCH_SETTINGS_SCHEMA)
 
-    cleanup_settings = cast(ConfigMap, dict(config.get("cleanup", config.get("killarr", {}))))
+    # Section name: "defence" matches the WARDEN_MODE name for the cleanup
+    # loop; "cleanup" and "killarr" are kept as backward-compat aliases.
+    cleanup_settings = cast(ConfigMap, dict(config.get("defence", config.get("cleanup", config.get("killarr", {})))))
     if not isinstance(cleanup_settings, dict):
-        raise ValueError("'cleanup' must be a YAML mapping.")
+        raise ValueError("'defence' (or legacy 'cleanup'/'killarr') must be a YAML mapping.")
     _validate_cleanup_settings(cleanup_settings, CLEANUP_SETTINGS_SCHEMA)
     _validate_stall_actions(cleanup_settings)
 

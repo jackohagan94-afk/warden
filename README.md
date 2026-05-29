@@ -67,7 +67,7 @@ instances:
 Radarr supports grouping movies by collection:
 
 ```yaml
-global:
+vigilance:
   radarr_collection_search_mode: "off"  # off | detect | force
 ```
 
@@ -80,7 +80,7 @@ global:
 Configure how Warden hunts for missing and upgrade media:
 
 ```yaml
-global:
+vigilance:                          # legacy alias: global
   dry_run: false                    # Log intended searches without sending commands
   active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   run_interval_minutes: 30          # How often to check for new items
@@ -125,7 +125,7 @@ instances:
 Configure how Warden defends your library from problematic downloads:
 
 ```yaml
-killarr:
+defence:                            # legacy aliases: cleanup / killarr
   dry_run: false                    # Log intended removals without deleting queue items
   active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   interval: 600                     # Run every 10 minutes
@@ -178,7 +178,7 @@ killarr:
 Restrict both modes to a specific local-time window. Set `TZ` in the container environment to control the timezone used by these checks:
 
 ```yaml
-global:
+vigilance:
   active_hours: "22:00-06:00"     # Only run between 10 PM and 6 AM local time
 ```
 
@@ -189,15 +189,15 @@ Leave empty or omit for all hours (default).
 Skip instances after consecutive failures:
 
 ```yaml
-global:
+vigilance:
   circuit_breaker_threshold: 3      # Vigilance fetch failures
-killarr:
+defence:
   circuit_breaker_threshold: 3      # Defence cleanup failures
 ```
 
 #### Per-Instance Overrides
 
-Any global or killarr setting can be overridden per instance:
+Any vigilance or defence setting can be overridden per instance (legacy `global`/`cleanup`/`killarr` names still accepted):
 
 ```yaml
 instances:

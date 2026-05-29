@@ -1,12 +1,13 @@
 # Warden — Unified Configuration
-# Supports both search (Warden) and cleanup (Killarr) modes.
+# Two sections: "vigilance" (search) and "defence" (cleanup).
 # WARDEN_MODE=warden runs both; =vigilance or =defence runs one only.
-# Legacy values both/search/cleanup are still accepted.
+# Legacy section names (global / cleanup / killarr) and legacy mode values
+# (both / search / cleanup) are still accepted.
 
 # ---------------------------------------------------------------------------
-# Warden — automated search scheduling
+# Vigilance — automated search scheduling   (legacy alias: global)
 # ---------------------------------------------------------------------------
-global:
+vigilance:
   active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   dry_run: false
   run_interval_minutes: 30          # Run missing/upgrade cycles every 30 minutes
@@ -35,9 +36,9 @@ global:
   exclude_tags: []                  # Optional *Arr tag labels to exclude
 
 # ---------------------------------------------------------------------------
-# Killarr — stalled download cleanup
+# Defence — stalled download cleanup   (legacy aliases: cleanup / killarr)
 # ---------------------------------------------------------------------------
-cleanup:
+defence:
   active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   interval: 600                     # Run every 10 minutes
   stagger_interval_seconds: 5
