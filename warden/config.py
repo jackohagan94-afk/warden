@@ -218,7 +218,7 @@ def _validate_cleanup_settings(settings: ConfigMap, schema: SchemaMap) -> None:
     for setting, definition in schema.items():
         default = definition["default"]
         settings.setdefault(setting, list(default) if isinstance(default, list) else default)
-        _validate_schema_setting(setting, settings[setting], definition, "killarr")
+        _validate_schema_setting(setting, settings[setting], definition, "cleanup")
 
 
 def _validate_stall_actions(settings: ConfigMap) -> None:
@@ -274,9 +274,9 @@ def parse_config(config: ConfigMap) -> ConfigMap:
     _apply_interval_conversions(search_settings)
     _validate_search_settings(search_settings, SEARCH_SETTINGS_SCHEMA)
 
-    cleanup_settings = cast(ConfigMap, dict(config.get("killarr", {})))
+    cleanup_settings = cast(ConfigMap, dict(config.get("cleanup", config.get("killarr", {}))))
     if not isinstance(cleanup_settings, dict):
-        raise ValueError("'killarr' must be a YAML mapping.")
+        raise ValueError("'cleanup' must be a YAML mapping.")
     _validate_cleanup_settings(cleanup_settings, CLEANUP_SETTINGS_SCHEMA)
     _validate_stall_actions(cleanup_settings)
 

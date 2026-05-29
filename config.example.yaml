@@ -37,7 +37,7 @@ global:
 # ---------------------------------------------------------------------------
 # Killarr — stalled download cleanup
 # ---------------------------------------------------------------------------
-killarr:
+cleanup:
   active_hours: ""                  # Optional local-time window, e.g. "22:00-06:00"
   interval: 600                     # Run every 10 minutes
   stagger_interval_seconds: 5
