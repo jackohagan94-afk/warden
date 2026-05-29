@@ -31,7 +31,7 @@ Warden handles two jobs that every *Arr homelab needs: scheduled searching for m
 [li]Dry-run mode — log what would happen without touching anything[/li]
 [/ul]
 
-[b]Setup:[/b] Copy [b]config.example.yaml[/b] from the GitHub repo to your config directory as [b]config.yaml[/b], fill in your Sonarr/Radarr/Lidarr host URLs, and use [b]${SONARR_TV_API_KEY}[/b] / [b]${SONARR_ANIME_API_KEY}[/b] / [b]${RADARR_API_KEY}[/b] / [b]${LIDARR_API_KEY}[/b] placeholders so keys stay out of config files. Set those keys below. See the README for the full config reference.
+[b]Setup:[/b] Copy [b]config.example.yaml[/b] from the GitHub repo to your config directory as [b]config.yaml[/b], fill in your Sonarr/Radarr/Lidarr host URLs, and use [b]${SONARR_API_KEY}[/b] / [b]${RADARR_API_KEY}[/b] / [b]${LIDARR_API_KEY}[/b] placeholders so keys stay out of config files. Set those keys below. See the README for the full config reference.
   </Description>
   <Support>https://github.com/johagan94/warden/issues</Support>
   <Project>https://github.com/johagan94/warden</Project>
@@ -64,12 +64,8 @@ Warden handles two jobs that every *Arr homelab needs: scheduled searching for m
     Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
 
   <!-- API Keys — referenced in config.yaml as ${VAR_NAME} -->
-  <Config Name="Sonarr TV API Key" Target="SONARR_TV_API_KEY" Default=""
-    Description="Sonarr TV instance API key. Reference in config.yaml as [b]${SONARR_TV_API_KEY}[/b]. Sonarr → Settings → General → API Key."
-    Type="Variable" Display="always" Required="false" Mask="true"></Config>
-
-  <Config Name="Sonarr Anime API Key" Target="SONARR_ANIME_API_KEY" Default=""
-    Description="Sonarr Anime instance API key (if separate from TV). Reference in config.yaml as [b]${SONARR_ANIME_API_KEY}[/b]."
+  <Config Name="Sonarr API Key" Target="SONARR_API_KEY" Default=""
+    Description="Sonarr API key. Reference in config.yaml as [b]${SONARR_API_KEY}[/b]. Sonarr &#8594; Settings &#8594; General &#8594; API Key. (Running multiple Sonarr instances? Add more variables here and reference them in config.yaml.)"
     Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
   <Config Name="Radarr API Key" Target="RADARR_API_KEY" Default=""

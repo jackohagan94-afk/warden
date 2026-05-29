@@ -230,6 +230,15 @@ services:
 
 **Registry:** Images are published to GitHub Container Registry (`ghcr.io/jackohagan94-afk/warden`). For private deployments, use your own registry URL.
 
+## Decypharr (optional)
+
+Running Warden alongside [decypharr](https://github.com/sirrobot01/decypharr)?
+The [`extras/decypharr/`](extras/decypharr/) folder has optional host-side
+helper scripts for decypharr's FUSE mount lifecycle — a stale-mount watchdog
+(`heartbeat.sh`) and a clean array-stop orchestrator (`janitor.sh`). They are
+not required by Warden and are ignored by anyone not using decypharr. See
+[`extras/decypharr/README.md`](extras/decypharr/README.md).
+
 ## Building
 
 ```bash

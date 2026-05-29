@@ -2,7 +2,7 @@
   <Profile>
     Warden automates *Arr media-library maintenance: Vigilance schedules missing and upgrade searches across Sonarr, Radarr, and Lidarr; Defence (Killarr) removes and blocklists stalled or broken downloads. Configured via a single config.yaml with environment-variable substitution for API keys.
   </Profile>
-  <Icon>https://raw.githubusercontent.com/johagan94/warden/main/warden.png</Icon>
+  <Icon>https://raw.githubusercontent.com/johagan94/unraid-templates/main/icons/warden.png</Icon>
   <WebPage>https://github.com/johagan94/warden</WebPage>
   <Forum>https://github.com/johagan94/warden/issues</Forum>
 </CommunityApplications>
