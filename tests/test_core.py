@@ -424,6 +424,18 @@ class TestStallClassifier:
     def test_classify_lidarr_similar_album_failure(self) -> None:
         assert classify_stall(["Couldn't find similar album for [/data/decypharr/download]"]) == "manual_import"
 
+    def test_classify_lidarr_track_completeness_as_missing_items(self) -> None:
+        # Track-completeness mismatches: a re-search can find a complete release,
+        # so these classify as missing_items (blocklist + search), not manual_import.
+        assert classify_stall(["Has unmatched tracks"]) == "missing_items"
+        assert classify_stall(["Has fewer tracks than existing release"]) == "missing_items"
+        assert classify_stall(["Has missing tracks"]) == "missing_items"
+
+    def test_classify_duplicate_artist_stays_unknown(self) -> None:
+        # The duplicate-artist case must NOT be blocklisted/re-grabbed (a re-grab
+        # can never fix a Lidarr metadata dupe); it stays unknown -> ignore on lidarr.
+        assert classify_stall(["Unable to import automatically, found multiple artists"]) == "unknown"
+
 
 class TestCleanupRemoval:
     def test_blocklist_removal_triggers_sonarr_episode_search(self) -> None:

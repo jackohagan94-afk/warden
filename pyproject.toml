@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "warden"
-version = "0.4.3"
+version = "0.4.4"
 description = "Unified Warden + Killarr all-in-one service for automating media searches and stalled download cleanup across Radarr, Sonarr, and Lidarr."
 readme = "README.md"
 requires-python = ">=3.13"

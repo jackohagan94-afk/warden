@@ -59,7 +59,6 @@ _CATEGORY_MAP: dict[str, list[str]] = {
         "album match is not close enough",
         "couldn't find similar album",
         "failed to import track",
-        "has missing tracks",
         "permissions error",
         "worst track match",
     ],
@@ -84,6 +83,9 @@ _CATEGORY_MAP: dict[str, list[str]] = {
     "missing_items": [
         "not imported or missing from the release",
         "not found in the grabbed release",
+        "has unmatched tracks",
+        "has fewer tracks than existing release",
+        "has missing tracks",
     ],
     "tba_title": ["tba title"],
 }
