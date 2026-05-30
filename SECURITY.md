@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.3.x   | Yes       |
-| < 0.3   | No        |
+| 0.4.x   | Yes       |
+| < 0.4   | No        |
 
 ## Reporting a Vulnerability
 
@@ -26,4 +26,4 @@ You will receive a response within 48 hours.
 - All HTTP requests use configurable timeouts
 - Container runs as non-root user
 - Dependencies are scanned for known vulnerabilities on every release
-- Static analysis (bandit) runs on every push to main
+- Static analysis (bandit) runs in CI on pull requests and releases
