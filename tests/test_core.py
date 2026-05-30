@@ -875,10 +875,24 @@ class TestStallDetection:
 
     def test_stalled_age_based_when_queue_max_age_exceeded(self) -> None:
         client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1})
+        # Old + not completed + not healthily in-progress -> age-reaped.
         assert client._is_stalled(
+            {
+                "status": "",
+                "trackedDownloadState": "importPending",
+                "added": "2024-01-01T00:00:00Z",
+            }
+        )
+
+    def test_stalled_age_based_protects_healthy_in_progress(self) -> None:
+        client = SonarrClient("test", "http://sonarr:8989", "abc123", {}, {"queue_max_age_hours": 1})
+        # Old, but the *arr still reports it healthily downloading -> NOT stalled.
+        # Slow is not the same as stalled; protects good downloads from blocklisting.
+        assert not client._is_stalled(
             {
                 "status": "downloading",
                 "trackedDownloadStatus": "ok",
+                "trackedDownloadState": "downloading",
                 "added": "2024-01-01T00:00:00Z",
             }
         )

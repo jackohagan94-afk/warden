@@ -113,9 +113,7 @@ class ArrClient(ABC):
         self._sleep_func = time.sleep
 
         if not self.url.lower().startswith("https://"):
-            logger.info(
-                f"Client '{name}' is using a non-HTTPS URL ({self.url})."
-            )
+            logger.info(f"Client '{name}' is using a non-HTTPS URL ({self.url}).")
 
         self.session = requests.Session()
         self.session.headers.update({"X-Api-Key": api_key, "Content-Type": "application/json"})
@@ -517,6 +515,26 @@ class ArrClient(ABC):
                 break
         return result
 
+    def _is_healthy_in_progress(self, record: Record) -> bool:
+        """Whether the download client reports this item as healthy and still in flight.
+
+        Such items are exempt from age-based (``queue_max_age_hours``) reaping so Warden
+        never blocklists a download that is legitimately still progressing — slow is not
+        the same as stalled. If it later genuinely stalls, the *arr flips
+        ``trackedDownloadStatus`` to ``warning`` and the normal stall path reaps it
+        immediately, regardless of age. (Explicit problem states — ``warning``,
+        ``failed``, ``downloadClientUnavailable`` — are handled by ``_is_stalled`` before
+        this is consulted.)
+        """
+        if record.get("trackedDownloadStatus", "") == "warning":
+            return False
+        status = record.get("status", "")
+        tracked_state = record.get("trackedDownloadState", "")
+        return status in ("downloading", "queued", "delay", "paused") or tracked_state in (
+            "downloading",
+            "queued",
+        )
+
     def _is_stalled(self, record: Record) -> bool:
         status = record.get("status", "")
         tracked_status = record.get("trackedDownloadStatus", "")
@@ -528,10 +546,14 @@ class ArrClient(ABC):
             return True
         if self.queue_max_age_hours > 0:
             added = record.get("added", "")
-            if added and status != "completed":
+            # Age-reap only items that are NOT healthily downloading — protects slow but
+            # healthy in-progress downloads from being blocklisted just for being old.
+            if added and status != "completed" and not self._is_healthy_in_progress(record):
                 try:
                     added_dt = datetime.datetime.fromisoformat(added.replace("Z", "+00:00"))
-                    if datetime.datetime.now(datetime.UTC) - added_dt > datetime.timedelta(hours=self.queue_max_age_hours):
+                    if datetime.datetime.now(datetime.UTC) - added_dt > datetime.timedelta(
+                        hours=self.queue_max_age_hours
+                    ):
                         return True
                 except (ValueError, TypeError):
                     pass
@@ -645,25 +667,13 @@ class ArrClient(ABC):
             )
             return
 
-        params: dict[str, str] = {"removeFromClient": "true"}
-        if item.action == "blocklist":
-            params["blocklist"] = "true"
-
-        url = f"{self.url}{self.ENDPOINT_QUEUE}/{item.queue_id}"
-        try:
-            self._throttle_mutating_request()
-            response = self.session.delete(url, params=params, timeout=self.delete_timeout_seconds)
-            if response.status_code == 404:
-                logger.info(
-                    f"[{self.name}] Removed ({item.action}, {item.category}, cascade): {item.title} ({index}/{total})"
-                )
-                self._record_cleanup_retry(item.media_id, item.title)
-            else:
-                response.raise_for_status()
-                logger.info(f"[{self.name}] Removed ({item.action}, {item.category}): {item.title} ({index}/{total})")
-                self._record_cleanup_retry(item.media_id, item.title)
-        except requests.RequestException as error:
-            logger.error(f"[{self.name}] Failed to remove {item.title} (ID: {item.queue_id}): {error}")
+        removed = self._delete_queue_item(item, index, total)
+        if not removed:
+            # Terminal failure even after the fallback. Cool the item down so subsequent
+            # cycles don't re-hammer the same failing removal (avoids log spam + wasted
+            # API calls on an item the *arr currently refuses to drop). Takes effect only
+            # when retry_interval_minutes > 0; otherwise it is retried next cycle as before.
+            self._record_cleanup_retry(item.media_id, item.title)
             return
 
         if self.search_after_cleanup and item.action in self.search_after_cleanup_actions:
@@ -671,6 +681,63 @@ class ArrClient(ABC):
                 self._trigger_single(item.media_id, item.action, item.title, index, total)
             except Exception:
                 logger.exception(f"[{self.name}] Failed to trigger replacement search for {item.title}.")
+
+    def _delete_queue_item(self, item: QueueItem, index: int, total: int) -> bool:
+        """Delete a queue item, degrading gracefully if the primary attempt fails.
+
+        Strategy:
+          1. Primary attempt — ``blocklist``+remove for blocklist actions, else a plain
+             remove (``removeFromClient=true``).
+          2. If the primary attempt asked to blocklist and it errors, retry **once** as a
+             plain remove without blocklist. Some download clients (e.g. decypharr) return
+             HTTP 500 on the blocklist variant for items they cannot blocklist yet still
+             honour a plain removal — so this clears the queue item instead of failing
+             every cycle forever.
+
+        A 404 is treated as success (the item was already gone / removed via cascade).
+        Records the cleanup cooldown on success. Returns True if removed, else False.
+        """
+        base_params: dict[str, str] = {"removeFromClient": "true"}
+        wants_blocklist = item.action == "blocklist"
+        attempts: list[tuple[dict[str, str], str]] = []
+        if wants_blocklist:
+            attempts.append(({**base_params, "blocklist": "true"}, item.action))
+            attempts.append((dict(base_params), "remove"))  # fallback: drop without blocklisting
+        else:
+            attempts.append((dict(base_params), item.action))
+
+        url = f"{self.url}{self.ENDPOINT_QUEUE}/{item.queue_id}"
+        last_error: Exception | None = None
+        for attempt_idx, (params, effective_action) in enumerate(attempts):
+            is_fallback = attempt_idx > 0
+            try:
+                self._throttle_mutating_request()
+                response = self.session.delete(url, params=params, timeout=self.delete_timeout_seconds)
+                if response.status_code == 404:
+                    logger.info(
+                        f"[{self.name}] Removed ({item.action}, {item.category}, cascade): "
+                        f"{item.title} ({index}/{total})"
+                    )
+                    self._record_cleanup_retry(item.media_id, item.title)
+                    return True
+                response.raise_for_status()
+                detail = f"{effective_action}, {item.category}" + (", fallback" if is_fallback else "")
+                logger.info(f"[{self.name}] Removed ({detail}): {item.title} ({index}/{total})")
+                self._record_cleanup_retry(item.media_id, item.title)
+                return True
+            except requests.RequestException as error:
+                last_error = error
+                if not is_fallback and wants_blocklist:
+                    logger.warning(
+                        f"[{self.name}] Blocklist-remove failed for {item.title} "
+                        f"(ID: {item.queue_id}): {error}. Retrying as plain remove."
+                    )
+
+        logger.error(
+            f"[{self.name}] Failed to remove {item.title} (ID: {item.queue_id}) "
+            f"after {len(attempts)} attempt(s): {last_error}"
+        )
+        return False
 
 
 class LidarrClient(ArrClient):
