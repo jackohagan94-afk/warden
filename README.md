@@ -50,6 +50,8 @@ Control the granularity of search commands per instance:
 | Lidarr | `artist`, `album` | `album` | `ArtistSearch` / `AlbumSearch` |
 | Radarr | `movie`, `collection` | `movie` | `MoviesSearch` / `CollectionSearch` |
 
+For Sonarr on large libraries, see [Per-Tag Search Limits](#per-tag-search-limits-sonarr) to cap searches per tag and rotate through the backlog.
+
 ```yaml
 instances:
   sonarr-instance:
@@ -88,12 +90,13 @@ vigilance:                          # legacy alias: global
   run_interval_minutes_upgrade:     # Optional upgrade-only interval in minutes
   missing_batch_size: 25            # Items searched per cycle (0 = disabled, -1 = unlimited)
   upgrade_batch_size: 0             # Upgrade searches per cycle (0 = disabled)
-  search_order: release_date_ascending
+  search_order: release_date_ascending  # alphabetical_* | last_added_* | last_searched_* | release_date_* | random
   stagger_interval_seconds: 10      # Delay between individual search commands
   retry_interval_days: 5            # Skip items searched within this window
   retry_interval_days_missing: 3    # Override for missing items only
   retry_interval_days_upgrade: 7    # Override for upgrade items only
   fetch_page_size: 2000             # Records per API request
+  fetch_record_limit: 0             # Cap records pulled per wanted fetch (0 = unlimited)
   fetch_timeout_seconds: 120        # HTTP request timeout
   max_queue_size: 500               # Pause if queue >= this (0 = disabled)
   circuit_breaker_threshold: 3      # Skip instance after N consecutive failures
@@ -120,6 +123,37 @@ instances:
     # season_packs: 5              # Or: minimum episode count
 ```
 
+#### Per-Tag Search Limits (Sonarr)
+
+For very large libraries, paging the entire wanted/missing set every cycle is slow
+and can flood your download client. `tag_limits` instead caps how many **series**
+are searched per *Arr tag each cycle, replacing the whole-library scan:
+
+```yaml
+instances:
+  sonarr-instance:
+    type: sonarr
+    search_type: series
+    tag_limits:
+      anime: 10                     # up to 10 anime series per cycle
+      live-action: 10               # up to 10 live-action series per cycle
+```
+
+- Each entry triggers one **`SeriesSearch`**, so Sonarr resolves season packs with
+  per-episode fallback (**series → season → episode**); a whole multi-season series
+  counts as a single unit against the cap.
+- A per-tag cursor **rotates through the backlog** across cycles (first N → next N →
+  … → wrap) rather than re-searching the same top-N every time. The cursor is
+  in-memory and resets to the top of each tag on restart.
+- Series whose tags are not listed — and untagged series — are **not** searched by
+  this path; add their tag to `tag_limits` to include them.
+- When set, `tag_limits` takes precedence over `search_type` and `season_packs` for
+  that instance, and the instance is exempt from cross-instance batch allocation (its
+  per-tag caps are authoritative). It is **missing-only** — upgrades are unaffected.
+- Raise the numbers to move through a backlog faster. For huge libraries this is
+  preferable to `fetch_record_limit`, which only truncates the scan rather than
+  fairly distributing searches across tags.
+
 ### Defence — Queue Cleanup
 
 Configure how Warden defends your library from problematic downloads:
@@ -136,10 +170,12 @@ defence:                            # legacy aliases: cleanup / killarr
   max_cleanup_queue_records: 0      # Cap total records fetched (0 = unlimited)
   max_removals_per_instance: 25     # Per-instance removal cap per cycle (0 = no cap)
   delete_timeout_seconds: 15        # Timeout for queue deletion calls
+  fetch_timeout_seconds: 30         # HTTP timeout for queue fetches
   retry_interval_minutes: 0         # Cooldown before re-evaluating removed items (0 = off)
   removal_order: api_order          # api_order | age_ascending | age_descending
   cleanup_search_scope: episode     # episode | season | series (what ID to search after removal)
   protect_downloading_series: false # Hold back stalled items from series with active downloads
+  queue_max_age_hours: 0            # Clean non-completed items stuck in queue > N hours (0 = off)
   interleave_instances: false       # Alternate removals between instances
   search_after_cleanup:             # Optional override for global search_after_cleanup
   include_tags: []                  # Optional *Arr tag labels to include
@@ -154,6 +190,7 @@ defence:                            # legacy aliases: cleanup / killarr
   missing_items: blocklist
   tba_title: blocklist
   no_messages: blocklist
+  download_unavailable: blocklist   # Items orphaned by an unavailable download client
   unknown: blocklist
 ```
 
@@ -169,6 +206,7 @@ defence:                            # legacy aliases: cleanup / killarr
 | `missing_items` | Files not found in grabbed release |
 | `tba_title` | Title still "TBA" (unreleased) |
 | `no_messages` | No status messages provided by *Arr |
+| `download_unavailable` | Download client reported unavailable (orphaned queue item) |
 | `unknown` | Unrecognized messages (please report) |
 
 ### Shared Settings
@@ -206,6 +244,10 @@ instances:
     max_removals_per_instance: 5     # Override Defence cap for this instance only
     manual_import: remove            # Override one cleanup stall category for this instance
     search_type: artist
+  sonarr-instance:
+    type: sonarr
+    max_queue_size: 200              # Override Vigilance queue-pause threshold
+    tag_limits: { anime: 10 }        # Per-tag search caps apply per instance
 ```
 
 ## Docker Compose
@@ -213,7 +255,7 @@ instances:
 ```yaml
 services:
   warden:
-    image: ghcr.io/jackohagan94-afk/warden:latest
+    image: ghcr.io/johagan94/warden:latest
     container_name: warden
     restart: unless-stopped
     env_file:
@@ -228,7 +270,7 @@ services:
       - homelab
 ```
 
-**Registry:** Images are published to GitHub Container Registry (`ghcr.io/jackohagan94-afk/warden`). For private deployments, use your own registry URL.
+**Registry:** Images are published to GitHub Container Registry (`ghcr.io/johagan94/warden`). For private deployments, use your own registry URL.
 
 ## Decypharr (optional)
 

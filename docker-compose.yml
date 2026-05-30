@@ -1,6 +1,6 @@
 services:
   warden:
-    image: ghcr.io/johagan/warden:latest
+    image: ghcr.io/johagan94/warden:latest
     container_name: warden
     hostname: warden
     restart: unless-stopped
