@@ -246,6 +246,7 @@ def run_search_cycle(
 
     missing_pools: dict[ArrClient, list[MediaItem]] = {}
     upgrade_pools: dict[ArrClient, list[MediaItem]] = {}
+    tag_limited_queue: list[tuple[ArrClient, MediaItem]] = []
     failed_clients = 0
 
     for client in active_clients:
@@ -257,6 +258,11 @@ def run_search_cycle(
             failed_clients += 1
             logger.exception(f"[{client.name}] Search candidate fetch failed; continuing with remaining instances.")
             continue
+        if getattr(client, "uses_tag_limits", False):
+            # Client self-bounds via per-tag limits; take all its items, bypassing the
+            # shared cross-instance allocation so the per-tag caps stay authoritative.
+            tag_limited_queue.extend((client, item) for item in candidates)
+            continue
         m_items = [item for item in candidates if item[1] == "missing"]
         u_items = [item for item in candidates if item[1] == "upgrade"]
         if m_items:
@@ -267,6 +273,7 @@ def run_search_cycle(
     allocated_missing = _allocate_slots(global_missing, missing_pools)
     allocated_upgrade = _allocate_slots(global_upgrade, upgrade_pools)
     final_queue = _build_final_queue(allocated_missing, allocated_upgrade, interleave_instances, interleave_types)
+    final_queue = tag_limited_queue + final_queue
 
     if not final_queue:
         logger.info("No media to search this cycle across all instances.")

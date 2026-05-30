@@ -20,6 +20,7 @@ from warden.validators import (
     _validate_active_hours,
     _validate_season_packs,
     _validate_setting,
+    _validate_tag_limits,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ SEARCH_SETTINGS_SCHEMA: SchemaMap = {
     "dry_run": {"default": False, "type": bool},
     "exclude_tags": {"default": [], "type": list, "element_type": str},
     "fetch_page_size": {"default": 2000, "type": int, "min_value": 1},
+    "fetch_record_limit": {"default": 0, "type": int, "min_value": 0},
     "fetch_timeout_seconds": {"default": 120, "type": int, "min_value": 5},
     "include_tags": {"default": [], "type": list, "element_type": str},
     "interleave_instances": {"default": False, "type": bool},
@@ -69,6 +71,7 @@ SEARCH_SETTINGS_SCHEMA: SchemaMap = {
     "search_type": {"default": None, "type": str, "choices": VALID_SEARCH_TYPES},
     "season_packs": {"default": False, "custom_validator": _validate_season_packs},
     "stagger_interval_seconds": {"default": 30, "type": int, "min_value": 1},
+    "tag_limits": {"default": {}, "custom_validator": _validate_tag_limits},
     "upgrade_batch_size": {"default": 10, "type": int, "allow_special_values": True},
 }
 
@@ -207,17 +210,23 @@ def _validate_schema_setting(setting: str, value: Any, definition: SettingSchema
         _validate_action_list(setting, value, prefix)
 
 
+def _copy_default(default: Any) -> Any:
+    if isinstance(default, list):
+        return list(default)
+    if isinstance(default, dict):
+        return dict(default)
+    return default
+
+
 def _validate_search_settings(settings: ConfigMap, schema: SchemaMap) -> None:
     for setting, definition in schema.items():
-        default = definition["default"]
-        settings.setdefault(setting, list(default) if isinstance(default, list) else default)
+        settings.setdefault(setting, _copy_default(definition["default"]))
         _validate_schema_setting(setting, settings[setting], definition, "global")
 
 
 def _validate_cleanup_settings(settings: ConfigMap, schema: SchemaMap) -> None:
     for setting, definition in schema.items():
-        default = definition["default"]
-        settings.setdefault(setting, list(default) if isinstance(default, list) else default)
+        settings.setdefault(setting, _copy_default(definition["default"]))
         _validate_schema_setting(setting, settings[setting], definition, "cleanup")
 
 

@@ -81,6 +81,7 @@ class ArrClient(ABC):
 
         self.dry_run = search_settings.get("dry_run", False) or cleanup_settings.get("dry_run", False)
         self.fetch_page_size = search_settings.get("fetch_page_size", self.DEFAULT_FETCH_PAGE_SIZE)
+        self.fetch_record_limit = search_settings.get("fetch_record_limit", 0)
         self.fetch_timeout = search_settings.get("fetch_timeout_seconds", 120)
         self.stagger_seconds = search_settings.get("stagger_interval_seconds", 30)
         self.search_order = search_settings.get("search_order", "last_searched_ascending")
@@ -121,6 +122,8 @@ class ArrClient(ABC):
 
         self._include_tag_ids: set[int] = set()
         self._exclude_tag_ids: set[int] = set()
+        self._tag_limits_raw: dict[str, int] = dict(search_settings.get("tag_limits", {}) or {})
+        self._tag_limit_ids: dict[int, int] = {}
         self._resolve_tag_ids()
 
     # ----- abstract properties -----
@@ -165,14 +168,20 @@ class ArrClient(ABC):
         result: list[Record] = []
         current_page = 1
         page_size = self.fetch_page_size
+        record_limit = self.fetch_record_limit
         while True:
             params: RequestParams = {**self._extra_fetch_params(), "page": current_page, "pageSize": page_size}
             try:
                 response = self.session.get(url, params=params, timeout=self.fetch_timeout)
                 response.raise_for_status()
                 records = cast(list[Record], response.json().get("records", []))
+                if record_limit > 0:
+                    remaining = record_limit - len(result)
+                    if remaining <= 0:
+                        break
+                    records = records[:remaining]
                 result.extend(records)
-                if len(records) < page_size:
+                if len(records) < page_size or (record_limit > 0 and len(result) >= record_limit):
                     break
                 current_page += 1
             except requests.RequestException as error:
@@ -220,7 +229,7 @@ class ArrClient(ABC):
         exclude_names: list[str] = self.search_settings.get("exclude_tags", []) or self.cleanup_settings.get(
             "exclude_tags", []
         )
-        if include_names or exclude_names:
+        if include_names or exclude_names or self._tag_limits_raw:
             url = f"{self.url}{self.ENDPOINT_TAG}"
             try:
                 response = self.session.get(url, timeout=15)
@@ -228,8 +237,24 @@ class ArrClient(ABC):
                 tag_map = {tag["label"].lower(): tag["id"] for tag in response.json()}
                 self._include_tag_ids = self._resolve_tag_names(tag_map, include_names)
                 self._exclude_tag_ids = self._resolve_tag_names(tag_map, exclude_names)
+                self._tag_limit_ids = self._resolve_tag_limit_ids(tag_map)
             except requests.RequestException as err:
                 logger.error(f"[{self.name}] Failed to fetch tags, tag filtering disabled: {err}")
+
+    def _resolve_tag_limit_ids(self, tag_map: dict[str, int]) -> dict[int, int]:
+        result: dict[int, int] = {}
+        for label, limit in self._tag_limits_raw.items():
+            tag_id = tag_map.get(label.lower())
+            if tag_id is None:
+                logger.warning(f"[{self.name}] tag_limits tag not found, ignoring: {label}")
+            else:
+                result[tag_id] = limit
+        return result
+
+    @property
+    def uses_tag_limits(self) -> bool:
+        """Whether this client self-bounds its search via per-tag limits (bypasses global allocation)."""
+        return False
 
     def _resolve_tag_names(self, tag_map: dict[str, int], names: list[str]) -> set[int]:
         result: set[int] = set()
@@ -1027,6 +1052,14 @@ class SonarrClient(ArrClient):
         self.season_packs: SeasonPackThreshold = self.search_settings.get("season_packs", False)
         self.protect_downloading_series: bool = self.cleanup_settings.get("protect_downloading_series", False)
         self.cleanup_search_scope: str = self.cleanup_settings.get("cleanup_search_scope", "episode")
+        # Per-tag rotating cursor (in-memory) so successive tag_limits cycles walk
+        # through a tag's series backlog instead of re-searching the same top-N every
+        # cycle. Resets on restart — intentionally stateless, no disk persistence.
+        self._tag_search_cursor: dict[int, int] = {}
+
+    @property
+    def uses_tag_limits(self) -> bool:
+        return bool(self._tag_limit_ids)
 
     def _get_skip_series_ids(self, all_records: list[Record]) -> set[int]:
         """Return series IDs that have at least one non-stalled download still in progress.
@@ -1232,6 +1265,67 @@ class SonarrClient(ArrClient):
                     f"(Series: {series_id}, Season: {season_number}): {error}"
                 )
 
+    def _series_has_missing(self, series: Record) -> bool:
+        stats = series.get("statistics", {}) or {}
+        return cast(int, stats.get("episodeCount", 0)) > cast(int, stats.get("episodeFileCount", 0))
+
+    def _get_media_to_search_by_tag_limits(self, missing_batch_size: int) -> list[MediaItem]:
+        """Series-centric, per-tag-capped, rotating selection.
+
+        Fetches the series list once (instead of paging the entire wanted/missing set),
+        buckets monitored-with-missing series by configured tag, and selects up to N
+        per tag — one SeriesSearch each, so Sonarr resolves season packs with
+        per-episode fallback (series > season > episode) and a whole multi-season
+        series counts as a single unit against the cap.
+
+        A per-tag in-memory cursor advances each cycle so successive cycles walk
+        through the tag's backlog rather than re-searching the same top-N. Series are
+        de-duplicated within a cycle, so a series carrying two capped tags is searched
+        once and the other tag fills its remaining cap with distinct series.
+        """
+        if missing_batch_size == 0:
+            return []
+        series_list = self._fetch_list(self.ENDPOINT_SERIES)
+        buckets: dict[int, list[Record]] = {tag_id: [] for tag_id in self._tag_limit_ids}
+        for series in series_list:
+            if not series.get("monitored", False):
+                continue
+            if not self._series_has_missing(series):
+                continue
+            tags = set(series.get("tags") or [])
+            if self._exclude_tag_ids and tags & self._exclude_tag_ids:
+                continue
+            for tag_id in tags & buckets.keys():
+                buckets[tag_id].append(series)
+
+        items: list[MediaItem] = []
+        seen: set[int] = set()
+        for tag_id, cap in self._tag_limit_ids.items():
+            bucket = buckets.get(tag_id, [])
+            if not bucket:
+                self._tag_search_cursor[tag_id] = 0
+                continue
+            bucket.sort(key=lambda s: s.get("id", 0))
+            start = self._tag_search_cursor.get(tag_id, 0) % len(bucket)
+            picked = 0
+            scanned = 0
+            while picked < cap and scanned < len(bucket):
+                series = bucket[(start + scanned) % len(bucket)]
+                scanned += 1
+                series_id = series.get("id")
+                if series_id is None or series_id in seen:
+                    continue
+                seen.add(series_id)
+                items.append(
+                    (f"{self.SERIES_ID_PREFIX}{series_id}", "missing", series.get("title", f"Series {series_id}"))
+                )
+                picked += 1
+            # Advance past everything scanned so the next cycle resumes after it.
+            self._tag_search_cursor[tag_id] = (start + scanned) % len(bucket)
+        if self.search_order == "random":
+            random.shuffle(items)
+        return items
+
     def _get_media_to_search_by_series(self, missing_batch_size: int, upgrade_batch_size: int) -> list[MediaItem]:
         seen_series: set[int] = set()
         missing_items: list[MediaItem] = []
@@ -1302,6 +1396,10 @@ class SonarrClient(ArrClient):
             logger.warning(f"[{self.name}] Circuit breaker open — skipping fetch cycle.")
             return []
         try:
+            if self._tag_limit_ids:
+                result = self._get_media_to_search_by_tag_limits(missing_batch_size)
+                self.circuit_breaker.record_success(self.name)
+                return result
             if self.search_type == "series":
                 result = self._get_media_to_search_by_series(missing_batch_size, upgrade_batch_size)
                 self.circuit_breaker.record_success(self.name)

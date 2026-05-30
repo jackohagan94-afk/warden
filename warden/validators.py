@@ -125,6 +125,17 @@ def _validate_season_packs(setting: str, value: Any) -> None:
     )
 
 
+def _validate_tag_limits(setting: str, value: Any) -> None:
+    """Validate the tag_limits setting: a mapping of tag-name -> positive integer cap."""
+    if not isinstance(value, dict):
+        raise ValueError(f"'{setting}' must be a mapping of tag-name to an integer limit.")
+    for label, limit in value.items():
+        if not isinstance(label, str) or not label:
+            raise ValueError(f"'{setting}' keys must be non-empty tag-name strings.")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError(f"'{setting}.{label}' must be an integer >= 1, got {limit!r}.")
+
+
 def _validate_setting(
     setting: str,
     value: Any,

@@ -23,6 +23,9 @@ vigilance:
   interleave_instances: false       # Alternate searches between instances
   interleave_types: true            # Alternate missing and upgrade searches
   fetch_page_size: 2000             # Records per API request
+  fetch_record_limit: 0             # Cap records pulled per wanted fetch (0 = unlimited).
+                                    # Protects against huge libraries; for Sonarr prefer
+                                    # per-instance tag_limits below.
   fetch_timeout_seconds: 120        # HTTP request timeout
   circuit_breaker_threshold: 3      # Skip instance after 3 consecutive fetch failures
   max_queue_size: 500               # Pause searches if queue >= 500 items (0 = disabled)
@@ -86,6 +89,15 @@ instances:
     api_key: "${SONARR_API_KEY}"
     enabled: true
     search_type: series             # Per-series SeriesSearch (not per episode)
+    # tag_limits (Sonarr): search at most N *series* per tag each cycle instead of
+    # paging the entire wanted/missing set. Each entry fires one SeriesSearch, so
+    # Sonarr resolves season packs with per-episode fallback (series > season >
+    # episode) and a whole series counts as a single unit against the cap. A per-tag
+    # cursor rotates through the backlog across cycles. Series whose tags are not
+    # listed (and untagged series) are skipped by this path.
+    # tag_limits:
+    #   anime: 10
+    #   live-action: 10
 
   radarr-instance:
     type: radarr
